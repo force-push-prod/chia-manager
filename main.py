@@ -20,7 +20,7 @@ plot = Plot()
 
 for line in testlog:
     match line:
-        case [timestamp, "chia.plotting.create_plots", ":", "INFO", message]:
+        case [timestamp, "chia.plotting.create_plots", ":", "INFO", *message]:
             parsed_time = datetime.datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S.%f')
             plot.start_time = parsed_time
         case ['Starting', 'plotting', 'progress', 'into', 'temporary', 'dirs:', *dirs]:
