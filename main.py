@@ -143,7 +143,8 @@ class PlotProgress:
 
             progress_string, progress_ratio = self.current_stage_progress
 
-            eta_seconds = (seconds_elapsed / (progress_ratio or 0.01))
+            progress_ratio_safe = progress_ratio or 0.01
+            eta_seconds = seconds_elapsed * (1 - progress_ratio) / progress_ratio_safe
             eta_time = self.stages_start_time[self.current_stage] + datetime.timedelta(seconds=eta_seconds)
             current_stage_progress = f'''
 stage {self.current_stage}:
