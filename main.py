@@ -92,8 +92,6 @@ class PlotProgress:
 
     @property
     def current_stage_progress(self):
-        # if self.current_stage == 0 or self.current_stage == 5:
-        #     return 'N/A'
         def o(a, b, c, d):
             string = f'{a} / {b} of {c} / {d}'.replace(' of 1 / 1', '')
             ratio = c / d + ((1 / d) * (a / b))
@@ -113,14 +111,18 @@ class PlotProgress:
             took = self.stages_took_seconds.get(stage_n, '')
             s += format_seconds(took) + '  |  '
 
+        if self.total_time_seconds:
+            s += format_seconds(self.total_time_seconds)
+
         if self.current_stage != 0 and self.current_stage != 5:
             seconds_elapsed = (datetime.datetime.now() - self.stages_start_time[1]).total_seconds()
 
             progress_string, progress_ratio = self.current_stage_progress
 
-            eta_seconds = (seconds_elapsed / (progress_ratio or 0.01))
+            eta_seconds = (seconds_elapsed / (progress_ratio or 0.0001))
             eta_time = self.stages_start_time[self.current_stage] + datetime.timedelta(seconds=eta_seconds)
             s += f'{int(progress_ratio * 100)}% {format_time(eta_time)}'
+
         return s
 
     @property
@@ -143,9 +145,10 @@ class PlotProgress:
 
             progress_string, progress_ratio = self.current_stage_progress
 
+            assert 0 <= progress_ratio <= 1
             progress_ratio_safe = progress_ratio or 0.01
             eta_seconds = seconds_elapsed * (1 - progress_ratio) / progress_ratio_safe
-            eta_time = self.stages_start_time[self.current_stage] + datetime.timedelta(seconds=eta_seconds)
+            eta_time = datetime.datetime.now() + datetime.timedelta(seconds=eta_seconds)
             current_stage_progress = f'''
 stage {self.current_stage}:
     progress  {progress_string}                   {int(progress_ratio * 100)}%
