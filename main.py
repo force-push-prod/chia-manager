@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import pprint
 import datetime
 
-from timeago import relative_format
+from timeago import relative_format as _relative_format
 
 testlog = open('/dev/stdin', 'r')
 testlog = [line.strip().split() for line in testlog.readlines()]
@@ -26,7 +26,7 @@ def rfc_date_to_datetime(s):
     return datetime.datetime(*t[:6])
 
 def format_time(d: datetime):
-    return str(d).replace('2021-', '') + '  ' + relative_format(d)
+    return str(d).replace('2021-', '') + '  ' + _relative_format(d)
 
 def format_seconds(s: float | int):
     s = int(s)
@@ -99,7 +99,7 @@ class PlotProgress:
 
         match self.current_stage:
             case 1: return o(self.current_bucket, 128, self.current_table, MAX_TABLE)
-            case 2: return o(self.current_bucket, 2, 7 - self.current_table, MAX_TABLE - 1)
+            case 2: return o(self.current_bucket, 2, self.current_table, MAX_TABLE - 1)
             case 3: return o(self.current_bucket, 110, self.current_table / 2, MAX_TABLE)
             case 4: return o(self.current_bucket, 128, 0, 1)
             case _: return 'N/A', 1
@@ -111,17 +111,25 @@ class PlotProgress:
             took = self.stages_took_seconds.get(stage_n, '')
             s += format_seconds(took) + '  |  '
 
-        if self.total_time_seconds:
-            s += format_seconds(self.total_time_seconds)
 
-        if self.current_stage != 0 and self.current_stage != 5:
-            seconds_elapsed = (datetime.datetime.now() - self.stages_start_time[1]).total_seconds()
+        if self.current_stage == 5:
+            start_time = format_time(self.stages_start_time[1])
+            took_seconds = format_seconds(self.total_time_seconds)
+            end_time = format_time(self.stages_start_time[1] + datetime.timedelta(seconds=self.total_time_seconds // 1))
+            s += f'{NL} {start_time}  |   {end_time}  |  {took_seconds}'
+
+
+        elif self.current_stage != 0:
+            seconds_elapsed = (datetime.datetime.now() - self.stages_start_time[self.current_stage]).total_seconds()
 
             progress_string, progress_ratio = self.current_stage_progress
 
             eta_seconds = (seconds_elapsed / (progress_ratio or 0.0001))
             eta_time = self.stages_start_time[self.current_stage] + datetime.timedelta(seconds=eta_seconds)
             s += f'{int(progress_ratio * 100)}% {format_time(eta_time)}'
+
+        else:
+            s += 'stage is 0'
 
         return s
 
@@ -141,13 +149,13 @@ class PlotProgress:
         current_stage_progress = ''
 
         if self.current_stage != 0 and self.current_stage != 5:
-            seconds_elapsed = (datetime.datetime.now() - self.stages_start_time[1]).total_seconds()
+            seconds_elapsed = (datetime.datetime.now() - self.stages_start_time[self.current_stage]).total_seconds()
 
             progress_string, progress_ratio = self.current_stage_progress
 
+            progress_ratio = max(0.01, min(progress_ratio, 1))
             assert 0 <= progress_ratio <= 1
-            progress_ratio_safe = progress_ratio or 0.01
-            eta_seconds = seconds_elapsed * (1 - progress_ratio) / progress_ratio_safe
+            eta_seconds = seconds_elapsed * (1 - progress_ratio) / progress_ratio
             eta_time = datetime.datetime.now() + datetime.timedelta(seconds=eta_seconds)
             current_stage_progress = f'''
 stage {self.current_stage}:
@@ -157,8 +165,12 @@ stage {self.current_stage}:
 '''.strip()
 
         total_time = ''
-        if self.total_time_seconds:
-            total_time = 'total time: ' + format_seconds(self.total_time_seconds)
+        if self.current_stage == 5:
+            total_time = 'FINISHED'
+            start_time = format_time(self.stages_start_time[1])
+            took_seconds = format_seconds(self.total_time_seconds)
+            end_time = format_time(self.stages_start_time[1] + datetime.timedelta(seconds=self.total_time_seconds // 1))
+            total_time += f'{NL} {start_time}  |   {end_time}  |  {took_seconds}'
 
         return f"""
 {stages_strings}
@@ -194,7 +206,7 @@ class Plot:
             s += ('*' * 80 + '\n') * 3 + self.error
 
         if self.last_alive != '':
-            s += '\nlast alive:    ' + relative_format(self.last_alive) + '\n'
+            s += '\nlast alive:    ' + format_time(self.last_alive) + '\n'
 
         if len(self.last_3_lines) > 0:
             s += '\nLast 3 lines:' + '\n        '.join(['', *self.last_3_lines]) + '\n'
@@ -290,7 +302,7 @@ for i, line in enumerate(testlog):
         plots[-1].consume_line(line)
 
 for i, p in enumerate(reversed(plots)):
-    if i == 0:
+    if i == 0 and p.progress.current_stage != 5:
         print(p.summary)
 
     else:
