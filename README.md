@@ -6,11 +6,11 @@ I want the program to:
 0. most basic stuff: when did this plot start? ID of this plot? Current config (buffer size, # of buckets, # of threads)?
 1. report current progress - which stage are we in?
 2. report current progress - where are we in the current stage?
-3. did anything error happen? See exmaple error log for sample
+3. did anything error happen? See example error log for sample
 4. report statistics - how long did previous stages took?
 5. report statistics - how long is current stage expected to took?
 6. report statistics - how long is current plot expected to took?
-6. report statistics - how long did it acutally took, for completed plotting logs?
+6. report statistics - how long did it actually took, for completed plotting logs?
 7. how did we change since we last looked at the file? Are we stuck, ie. stuck on some bucket or something?
 
 ## Installation

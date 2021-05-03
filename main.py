@@ -30,8 +30,6 @@ def format_seconds(s: float | int):
     s = int(s)
     return f'({s // 3600}.{s % 3600 // 60}.{s % 60 // 1}) {s}s'
 
-
-
 class PlotInfo:
     def __init__(self):
         self.plot_id: str = ''
@@ -99,13 +97,6 @@ class PlotProgress:
 
     @property
     def summary(self):
-        if self.current_stage == 0:
-            status = '-'
-        elif self.current_stage == 5:
-            status = 'finished'
-        else:
-            status = 'stage ' + str(self.current_stage)
-
         stages_strings = []
         for stage_n in range(1, self.current_stage):
             start_time = self.stages_start_time.get(stage_n, '')
@@ -114,7 +105,7 @@ class PlotProgress:
             took = self.stages_took_seconds.get(stage_n, '')
             if took: took = format_seconds(took)
 
-            stages_strings.append(f'Stage {stage_n} {TAB} {start_time} {TAB} {took}')
+            stages_strings.append(f'stage {stage_n}: {TAB} {start_time} {TAB} {took}')
         stages_strings = '\n'.join(stages_strings)
 
         current_stage_progress = ''
@@ -130,7 +121,7 @@ class PlotProgress:
 stage {self.current_stage}:
     progress  {progress_string}                   {int(progress_ratio * 100)}%
     elapsed   {format_seconds(seconds_elapsed)}
-    ETA       {format_seconds(eta_seconds)}        on {relative_format(eta_time)}
+    ETA       {format_seconds(eta_seconds)}        on {format_time(eta_time)}
 '''.strip()
 
         total_time = ''
@@ -138,7 +129,6 @@ stage {self.current_stage}:
             total_time = 'total time: ' + format_seconds(self.total_time_seconds)
 
         return f"""
-status: {status}
 {stages_strings}
 
 {current_stage_progress}
