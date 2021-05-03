@@ -15,6 +15,8 @@ NL = '\n'
 def parse_iso_datetime(s):
     return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%S')
 
+def shorten_str(s):
+    return s[:7] + '..' + s[-6:]
 
 class NextPlotException(Exception): pass
 
@@ -57,6 +59,15 @@ class PlotInfo:
             'dir_tmp: ' + self.dir_tmp1 + '  ' + self.dir_tmp1 + '\n'
         )
 
+    @property
+    def summary_short(self):
+        return (
+            '' + shorten_str(str(self.plot_id)) + '\t'
+            'buffer: ' + str(self.config_buffer_size.replace('MiB', ' MiB')) + '\t'
+            'threads: ' + str(self.config_threads) + '\t'
+            'dir_tmp: ' + self.dir_tmp1 + '  ' + self.dir_tmp1 + '\n'
+        )
+
 
 
 
@@ -94,6 +105,23 @@ class PlotProgress:
             case 3: return o(self.current_bucket, 110, self.current_table / 2, MAX_TABLE)
             case 4: return o(self.current_bucket, 128, 0, 1)
             case _: return 'N/A', 1
+
+    @property
+    def summary_short(self):
+        s = ''
+        for stage_n in range(1, self.current_stage):
+            took = self.stages_took_seconds.get(stage_n, '')
+            s += format_seconds(took) + '  |  '
+
+        if self.current_stage != 0 and self.current_stage != 5:
+            seconds_elapsed = (datetime.datetime.now() - self.stages_start_time[1]).total_seconds()
+
+            progress_string, progress_ratio = self.current_stage_progress
+
+            eta_seconds = (seconds_elapsed / (progress_ratio or 0.01))
+            eta_time = self.stages_start_time[self.current_stage] + datetime.timedelta(seconds=eta_seconds)
+            s += f'{int(progress_ratio * 100)}% {format_time(eta_time)}'
+        return s
 
     @property
     def summary(self):
@@ -145,6 +173,7 @@ class Plot:
         self.progress = PlotProgress()
         self.error = ''
         self.last_alive = ''
+        self.last_3_lines = []
 
     def __str__(self):
         return self.summary
@@ -163,12 +192,26 @@ class Plot:
         if self.last_alive != '':
             s += '\nlast alive:    ' + relative_format(self.last_alive) + '\n'
 
+        if len(self.last_3_lines) > 0:
+            s += '\nLast 3 lines:' + '\n        '.join(['', *self.last_3_lines]) + '\n'
+
         return s
 
+    @property
+    def summary_short(self):
+        return (
+            self.info.summary_short +
+            self.progress.summary_short + '\n' +
+            (('*' * 20 + self.error) if self.error != '' else '')
+        )
 
     def consume_line(self, line):
         if len(line) > 0 and line[0].startswith('2021-') and 'chia.plotting' not in ''.join(line):
             self.last_alive = parse_iso_datetime(line.pop(0))
+
+        self.last_3_lines.append(' '.join(line))
+        if len(self.last_3_lines) > 3:
+            self.last_3_lines.pop(0)
 
         match line:
             case [timestamp, 'chia.plotting.create_plots', ':', 'INFO', 'Creating', plot_total_count, 'plots', *_]:
@@ -240,9 +283,12 @@ for i, line in enumerate(testlog):
         plots[-1].consume_line(line)
     except NextPlotException:
         plots.append(Plot())
-        print(plots)
         plots[-1].consume_line(line)
 
+for i, p in enumerate(reversed(plots)):
+    if i == 0:
+        print(p.summary)
 
-for p in plots:
-    print(p.summary)
+    else:
+        print('\n' + '-' * 80)
+        print(p.summary_short)
