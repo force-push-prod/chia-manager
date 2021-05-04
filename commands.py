@@ -39,12 +39,12 @@ def get_commands(device, disk, parallel_id=1):
         """
 
     # TODO: add ssh support
-    n, buffer, threads = 1, 8000, 3
+    n, buffer, threads = 1, 8000, 5
     command_tmp = f"""
     nohup /bin/bash -c '2>&1 chia plots create
         -n {n} -b {buffer} -r {threads}
         -t {disk_path} -2 {disk_path} -d {disk_path}
-    | ts %Y-%m-%dT%H:%M:%S'
+    | ts %Y-%m-%dT%H:%M:%S%z'
     >> {log_path} 2>&1 &
     """
 

@@ -5,15 +5,14 @@ import datetime
 
 from timeago import relative_format as _relative_format
 
-testlog = open('/dev/stdin', 'r')
-testlog = [line.strip().split() for line in testlog.readlines()]
-
+import sys
 
 TAB = '\t'
 NL = '\n'
 
 def parse_iso_datetime(s):
     return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%S')
+    # return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%S%z')
 
 def shorten_str(s):
     return s[:7] + '..' + s[-6:]
@@ -295,18 +294,38 @@ class Plot:
                     self.error = s
 
 
-plots = [Plot()]
-for i, line in enumerate(testlog):
-    try:
-        plots[-1].consume_line(line)
-    except NextPlotException:
-        plots.append(Plot())
-        plots[-1].consume_line(line)
+if __name__ == '__main__':
+    log_file = open('/dev/stdin', 'r')
+    log = [line.strip().split() for line in log_file.readlines()]
+    log_file.close()
 
-for i, p in enumerate(reversed(plots)):
-    if i == 0 and p.progress.current_stage != 5:
-        print(p.summary)
+    plots = [Plot()]
+    for i, line in enumerate(log):
+        try:
+            plots[-1].consume_line(line)
+        except NextPlotException:
+            plots.append(Plot())
+            plots[-1].consume_line(line)
+
+
+    if len(sys.argv) > 1 and sys.argv[1] == 'js':
+        # import json
+        # s = json.dumps([p.progress.__dict__ for p in plots], indent=4, sort_keys=True, default=str)
+        from json import JSONEncoder
+        class MyEncoder(JSONEncoder):
+            def default(self, o):
+                if isinstance(o, datetime.datetime):
+                    return o.isoformat()
+                return o.__dict__
+
+        s = MyEncoder().encode([p.progress for p in plots])
+        print(s)
 
     else:
-        print('\n' + '-' * 80)
-        print(p.summary_short)
+        for i, p in enumerate(reversed(plots)):
+            if i == 0 and p.progress.current_stage != 5:
+                print(p.summary)
+
+            else:
+                print('\n' + '-' * 80)
+                print(p.summary_short)
