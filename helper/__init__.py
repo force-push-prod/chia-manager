@@ -1,5 +1,6 @@
 from .date import *
 from json import JSONEncoder
+import subprocess
 
 NL = '\n'
 TAB = '\t'
@@ -22,3 +23,6 @@ def convert_object_to_str(o):
                 return o.isoformat()
             return o.__dict__
     return MyEncoder().encode(o)
+
+def run_shell_get_stdout(s):
+    return subprocess.run(s, shell=True, stdout=subprocess.PIPE, universal_newlines=True).stdout

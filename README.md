@@ -15,3 +15,5 @@ I want the program to:
 
 ## Installation
 Use `pyenv` to install `3.10-dev` version locally: `pyenv install 3.10-dev`
+
+`pip install livereload`

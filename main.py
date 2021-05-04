@@ -10,7 +10,7 @@ class NextPlotException(Exception): pass
 
 class PlotInfo:
     def __init__(self):
-        self.plot_id: str = ''
+        self.plot_id = ''
         self.plot_size = 0
         self.plot_total_count = 0
         self.start_time = datetime.datetime(2000, 1, 1)
@@ -20,7 +20,6 @@ class PlotInfo:
         self.config_threads_stripe_size = 0
         self.dir_tmp1 = ''
         self.dir_tmp2 = ''
-        # self.dir_dst = ''
 
     def __str__(self):
         return pprint.pformat(self.__dict__)
