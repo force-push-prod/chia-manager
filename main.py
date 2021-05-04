@@ -1,43 +1,12 @@
-from email.utils import parsedate
 from dataclasses import dataclass
 import pprint
 import datetime
-
-from timeago import relative_format as _relative_format
-
 import sys
 
-TAB = '\t'
-NL = '\n'
-
-def parse_iso_datetime(s: str):
-    try:
-        return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%S')
-    except ValueError:
-        return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%S%z')
-
-
-def shorten_str(s):
-    return s[:7] + '..' + s[-6:]
-
-def progress_bar(ratio, width=80):
-    fill_count = round(width * ratio)
-    space_count = width - fill_count
-    return f"[{'=' * fill_count}{' ' * space_count}]"
+from helper import *
 
 class NextPlotException(Exception): pass
 
-def rfc_date_to_datetime(s):
-    # [parsing - How to parse a RFC 2822 date/time into a Python datetime? - Stack Overflow](https://stackoverflow.com/questions/885015)
-    t = parsedate(s)
-    return datetime.datetime(*t[:6])
-
-def format_time(d: datetime):
-    return str(d).replace('2021-', '') + '  ' + _relative_format(d)
-
-def format_seconds(s: float | int):
-    s = int(s)
-    return f'({s // 3600}.{s % 3600 // 60}.{s % 60 // 1}) {s}s'
 
 class PlotInfo:
     def __init__(self):
@@ -62,14 +31,12 @@ class PlotInfo:
 
     @property
     def summary_short(self):
-        return '     '.join([
-            shorten_str(str(self.plot_id)),
+        return SPACER.join([
+            shorten_plot_id(str(self.plot_id)),
             'buffer: ' + str(self.config_buffer_size.replace('MiB', ' MiB')),
             'threads: ' + str(self.config_threads),
-            'dir_tmp: ' + self.dir_tmp1 + '  ' + self.dir_tmp1 + '\n',
+            'dir_tmp: ' + self.dir_tmp1 + '  ' + self.dir_tmp1 + NL,
         ])
-
-
 
 
 MAX_TABLE = 7
@@ -81,7 +48,6 @@ class PlotProgress:
         self.total_time_seconds = 0.0
         self.current_bucket = 0
         self.current_table = 0
-        self.error = ''
 
     @property
     def current_stage(self):
@@ -112,7 +78,6 @@ class PlotProgress:
             took = self.stages_took_seconds.get(stage_n, '')
             s += format_seconds(took) + '  |  '
 
-
         if self.current_stage == 5:
             start_time = format_time(self.stages_start_time[1])
             took_seconds = format_seconds(self.total_time_seconds)
@@ -121,9 +86,7 @@ class PlotProgress:
 
 
         elif self.current_stage != 0:
-            tzinfo = self.stages_start_time[self.current_stage].tzinfo
-            now = datetime.datetime.now(tz=tzinfo)
-            seconds_elapsed = (now - self.stages_start_time[self.current_stage]).total_seconds()
+            seconds_elapsed = (now_tz() - self.stages_start_time[self.current_stage]).total_seconds()
 
             progress_string, progress_ratio = self.current_stage_progress
 
@@ -133,8 +96,9 @@ class PlotProgress:
 
         else:
             s += 'stage is 0'
-
         return s
+
+
 
     @property
     def summary(self):
@@ -147,27 +111,27 @@ class PlotProgress:
             if took: took = format_seconds(took)
 
             stages_strings.append(f'stage {stage_n}: {TAB} {start_time} {TAB} {took}')
-        stages_strings = '\n'.join(stages_strings)
+        stages_strings = NL.join(stages_strings)
 
         current_stage_progress = ''
 
         if self.current_stage != 0 and self.current_stage != 5:
             started_time = self.stages_start_time[self.current_stage]
-            seconds_elapsed = (datetime.datetime.now() - started_time).total_seconds()
+            seconds_elapsed = (now_no_tz() - started_time).total_seconds()
 
             progress_string, progress_ratio = self.current_stage_progress
 
             progress_ratio = max(0.01, min(progress_ratio, 1))
             assert 0 <= progress_ratio <= 1
             eta_seconds = seconds_elapsed * (1 - progress_ratio) / progress_ratio
-            eta_time = datetime.datetime.now() + datetime.timedelta(seconds=eta_seconds)
+            eta_time = now_no_tz() + datetime.timedelta(seconds=eta_seconds)
             current_stage_progress = f'''
 stage {self.current_stage}:
     progress  {progress_string}                   {round(progress_ratio * 100)}%
     {progress_bar(progress_ratio)}
     estimated time: {format_seconds(seconds_elapsed / progress_ratio)}
     {format_time(started_time)}                     {format_time(eta_time)}
-    {format_seconds(seconds_elapsed)}    {' '*45}    {format_seconds(eta_seconds)}
+    {format_seconds(seconds_elapsed)}    {SP*45}    {format_seconds(eta_seconds)}
 '''.strip()
 
         total_time = ''
@@ -203,19 +167,19 @@ class Plot:
     @property
     def summary(self):
         s = (
-            '-' * 80 + '\n'
-            '' + self.info.summary + '\n'
-            '' + self.progress.summary + '\n'
+            '-' * 80 + NL
+            + self.info.summary + NL
+            + self.progress.summary + NL
         )
 
         if self.error != '':
-            s += ('*' * 80 + '\n') * 3 + self.error
+            s += ('*' * 80 + NL) * 3 + self.error
 
         if self.last_alive != '':
-            s += '\nlast alive:    ' + format_time(self.last_alive) + '\n'
+            s += '\nlast alive:    ' + format_time(self.last_alive) + NL
 
         if len(self.last_3_lines) > 0:
-            s += '\nLast 3 lines:' + '\n        '.join(['', *self.last_3_lines]) + '\n'
+            s += '\nLast 3 lines:' + '\n        '.join(['', *self.last_3_lines]) + NL
 
         return s
 
@@ -223,15 +187,15 @@ class Plot:
     def summary_short(self):
         return (
             self.info.summary_short +
-            self.progress.summary_short + '\n' +
+            self.progress.summary_short + NL +
             (('*' * 20 + self.error) if self.error != '' else '')
         )
 
     def consume_line(self, line):
         if len(line) > 0 and line[0].startswith('2021-') and 'chia.plotting' not in ''.join(line):
-            self.last_alive = parse_iso_datetime(line.pop(0))
+            self.last_alive = parse_iso(line.pop(0))
 
-        self.last_3_lines.append(' '.join(line))
+        self.last_3_lines.append(SP.join(line))
         if len(self.last_3_lines) > 3:
             self.last_3_lines.pop(0)
 
@@ -256,7 +220,7 @@ class Plot:
                 self.info.config_threads_stripe_size = int(y)
 
             case ['Starting', 'phase', phase, *_, t1, t2, t3, t4, t5]:
-                start_time = rfc_date_to_datetime(' '.join([t1, t2, t3, t4, t5]))
+                start_time = parse_rfc(SP.join([t1, t2, t3, t4, t5]))
 
                 phase_number = phase[0]
                 assert phase_number in '1234'
@@ -294,7 +258,7 @@ class Plot:
                 self.progress.current_bucket = int(x)
 
             case [*x]:
-                s = ' '.join(x)
+                s = SP.join(x)
                 if 'err' in s.lower():
                     self.error = s
 
@@ -332,5 +296,5 @@ if __name__ == '__main__':
                 print(p.summary)
 
             else:
-                print('\n' + '-' * 80)
+                print(NL + '-' * 80)
                 print(p.summary_short)

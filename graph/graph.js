@@ -23,8 +23,9 @@ let currentMousePosition = [0, 0];
 
 const INPUT = '[{"stages_start_time": {"1": "2021-05-03T01:43:19", "2": "2021-05-03T05:07:58", "3": "2021-05-03T06:32:39", "4": "2021-05-03T09:46:00"}, "stages_took_seconds": {"1": 12279.437, "2": 5081.001, "3": 11600.859, "4": 901.438}, "total_time_seconds": 29862.737, "current_bucket": 126, "current_table": 6, "error": ""}, {"stages_start_time": {"1": "2021-05-03T10:01:04", "2": "2021-05-03T13:37:26", "3": "2021-05-03T15:14:58", "4": "2021-05-03T18:35:56"}, "stages_took_seconds": {"1": 12981.79, "2": 5851.366, "3": 12057.474, "4": 791.013}, "total_time_seconds": 31681.647, "current_bucket": 126, "current_table": 6, "error": ""}, {"stages_start_time": {"1": "2021-05-03T20:25:48", "2": "2021-05-03T23:58:07"}, "stages_took_seconds": {"1": 12738.844}, "total_time_seconds": 0.0, "current_bucket": 1, "current_table": 5, "error": ""}]'
 function dateReviver(k, v) {
-    // HACK: ADDING TIME ZONE
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3}Z)?/.test(v)) return new Date(v + '-0400');
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*(([-+]\d{4})|Z)$/.test(v)) return new Date(v);
+    // HACK: If there is no timezone, default to EDT
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)) return new Date(v + '-0400');
     else return v;
 }
 const INPUT_PARSED = JSON.parse(INPUT, dateReviver)
