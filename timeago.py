@@ -40,7 +40,7 @@ def timeago_template(index, ago_in):
 def relative_format(date, now=None):
     if not isinstance(date, timedelta):
         if now is None:
-            now = datetime.now()
+            now = datetime.now(tz=date.tzinfo)
 
         assert isinstance(date, datetime)
         assert isinstance(now, datetime)

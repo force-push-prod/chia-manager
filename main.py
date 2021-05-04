@@ -10,9 +10,12 @@ import sys
 TAB = '\t'
 NL = '\n'
 
-def parse_iso_datetime(s):
-    return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%S')
-    # return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%S%z')
+def parse_iso_datetime(s: str):
+    try:
+        return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%S')
+    except ValueError:
+        return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%S%z')
+
 
 def shorten_str(s):
     return s[:7] + '..' + s[-6:]
@@ -118,7 +121,9 @@ class PlotProgress:
 
 
         elif self.current_stage != 0:
-            seconds_elapsed = (datetime.datetime.now() - self.stages_start_time[self.current_stage]).total_seconds()
+            tzinfo = self.stages_start_time[self.current_stage].tzinfo
+            now = datetime.datetime.now(tz=tzinfo)
+            seconds_elapsed = (now - self.stages_start_time[self.current_stage]).total_seconds()
 
             progress_string, progress_ratio = self.current_stage_progress
 
