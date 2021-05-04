@@ -18,6 +18,11 @@ def parse_iso_datetime(s):
 def shorten_str(s):
     return s[:7] + '..' + s[-6:]
 
+def progress_bar(ratio, width=80):
+    fill_count = round(width * ratio)
+    space_count = width - fill_count
+    return f"[{'=' * fill_count}{' ' * space_count}]"
+
 class NextPlotException(Exception): pass
 
 def rfc_date_to_datetime(s):
@@ -51,22 +56,16 @@ class PlotInfo:
 
     @property
     def summary(self):
-        return (
-            '     id: ' + str(self.plot_id) + '\n'
-            ' buffer: ' + str(self.config_buffer_size.replace('MiB', ' MiB')) + '\n'
-            'threads: ' + str(self.config_threads) + '\n'
-            '\n'
-            'dir_tmp: ' + self.dir_tmp1 + '  ' + self.dir_tmp1 + '\n'
-        )
+        return self.summary_short
 
     @property
     def summary_short(self):
-        return (
-            '' + shorten_str(str(self.plot_id)) + '\t'
-            'buffer: ' + str(self.config_buffer_size.replace('MiB', ' MiB')) + '\t'
-            'threads: ' + str(self.config_threads) + '\t'
-            'dir_tmp: ' + self.dir_tmp1 + '  ' + self.dir_tmp1 + '\n'
-        )
+        return '     '.join([
+            shorten_str(str(self.plot_id)),
+            'buffer: ' + str(self.config_buffer_size.replace('MiB', ' MiB')),
+            'threads: ' + str(self.config_threads),
+            'dir_tmp: ' + self.dir_tmp1 + '  ' + self.dir_tmp1 + '\n',
+        ])
 
 
 
@@ -126,7 +125,7 @@ class PlotProgress:
 
             eta_seconds = (seconds_elapsed / (progress_ratio or 0.0001))
             eta_time = self.stages_start_time[self.current_stage] + datetime.timedelta(seconds=eta_seconds)
-            s += f'{int(progress_ratio * 100)}% {format_time(eta_time)}'
+            s += f'{round(progress_ratio * 100)}% {format_time(eta_time)}'
 
         else:
             s += 'stage is 0'
@@ -149,7 +148,8 @@ class PlotProgress:
         current_stage_progress = ''
 
         if self.current_stage != 0 and self.current_stage != 5:
-            seconds_elapsed = (datetime.datetime.now() - self.stages_start_time[self.current_stage]).total_seconds()
+            started_time = self.stages_start_time[self.current_stage]
+            seconds_elapsed = (datetime.datetime.now() - started_time).total_seconds()
 
             progress_string, progress_ratio = self.current_stage_progress
 
@@ -159,9 +159,11 @@ class PlotProgress:
             eta_time = datetime.datetime.now() + datetime.timedelta(seconds=eta_seconds)
             current_stage_progress = f'''
 stage {self.current_stage}:
-    progress  {progress_string}                   {int(progress_ratio * 100)}%
-    elapsed   {format_seconds(seconds_elapsed)}
-    ETA       {format_seconds(eta_seconds)}        on {format_time(eta_time)}
+    progress  {progress_string}                   {round(progress_ratio * 100)}%
+    {progress_bar(progress_ratio)}
+    estimated time: {format_seconds(seconds_elapsed / progress_ratio)}
+    {format_time(started_time)}                     {format_time(eta_time)}
+    {format_seconds(seconds_elapsed)}    {' '*45}    {format_seconds(eta_seconds)}
 '''.strip()
 
         total_time = ''
@@ -173,12 +175,12 @@ stage {self.current_stage}:
             total_time += f'{NL} {start_time}  |   {end_time}  |  {took_seconds}'
 
         return f"""
+started: {format_time(self.stages_start_time[1])}
 {stages_strings}
 
 {current_stage_progress}
 
 {total_time}
-
 """.strip().replace('\n\n\n', '\n\n')
 
 
