@@ -14,14 +14,17 @@ def get_commands(device, disk, parallel_id=1):
             log_path = '/Users/yyin/' + log_file_name
             disk_path = '/Volumes/' + disk_name
             ssh_name = False
+            n, buffer, threads = 1, 8000, 3
         case 'mbp':
             log_path = '/Users/yinyifei/' + log_file_name
             disk_path = '/Volumes/' + disk_name
             ssh_name = 'mbp'
+            n, buffer, threads = 1, 8000, 5
         case 'j':
             log_path = '/home/yy/' + log_file_name
             disk_path = '/media/yy/' + disk_name
             ssh_name = 'j'
+            n, buffer, threads = 1, 8000, 5
         case _:
             assert False
 
@@ -30,7 +33,7 @@ def get_commands(device, disk, parallel_id=1):
 
     if ssh_name:
         command = f"""
-        watch -n {INTERVAL} 'ssh {device} "cat {log_path}" | {CHIA_MANAGER_PROGRAM}'
+        watch -n {INTERVAL} 'ssh {device} cat {log_path} | {CHIA_MANAGER_PROGRAM}'
         """
 
     else:
@@ -39,7 +42,6 @@ def get_commands(device, disk, parallel_id=1):
         """
 
     # TODO: add ssh support
-    n, buffer, threads = 1, 8000, 5
     command_tmp = f"""
     nohup /bin/bash -c '2>&1 chia plots create
         -n {n} -b {buffer} -r {threads}
@@ -48,6 +50,10 @@ def get_commands(device, disk, parallel_id=1):
     >> {log_path} 2>&1 &
     """
 
-    return command.strip(), command_tmp.replace('\n', '').strip()
+    print(command.strip())
+    print(command_tmp.replace('\n', '').strip())
+
+import sys
+get_commands(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]) if len(sys.argv) > 3 else 1)
 
 # CHIA_PATH = '/Applications/Chia.app/Contents/Resources/app.asar.unpacked/daemon/chia'

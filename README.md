@@ -14,4 +14,4 @@ I want the program to:
 7. how did we change since we last looked at the file? Are we stuck, ie. stuck on some bucket or something?
 
 ## Installation
-Use `pyenv` to install `3.10-dev` version locally
+Use `pyenv` to install `3.10-dev` version locally: `pyenv install 3.10-dev`
