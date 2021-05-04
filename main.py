@@ -268,7 +268,7 @@ if __name__ == '__main__':
     log_file.close()
 
     plots = [Plot()]
-    for i, line in enumerate(log):
+    for line in log:
         try:
             plots[-1].consume_line(line)
         except NextPlotException:
@@ -277,16 +277,7 @@ if __name__ == '__main__':
 
 
     if len(sys.argv) > 1 and sys.argv[1] == 'js':
-        # import json
-        # s = json.dumps([p.progress.__dict__ for p in plots], indent=4, sort_keys=True, default=str)
-        from json import JSONEncoder
-        class MyEncoder(JSONEncoder):
-            def default(self, o):
-                if isinstance(o, datetime.datetime):
-                    return o.isoformat()
-                return o.__dict__
-
-        s = MyEncoder().encode([p.progress for p in plots])
+        s = convert_object_to_str([p.progress for p in plots])
         print(s)
 
     else:

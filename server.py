@@ -23,6 +23,7 @@ class MyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
             self.respond(FILES['index.html'], 'html')
+
         if self.path == '/graph.js':
             self.respond(FILES['graph.js'], 'js')
 
