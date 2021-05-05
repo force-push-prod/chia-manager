@@ -90,7 +90,9 @@ class Plot():
             command = ["ssh", self.config.device, self.config.command_to_start]
         else:
             command = [self.config.command_to_start]
-        self.plot_process = subprocess.Popen(command)
+        self.plot_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.plot_process.wait()
+        self.process_id = int(self.plot_process.stdout.strip())
 
 
     def update_progress(self):
