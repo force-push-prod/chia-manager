@@ -44,7 +44,7 @@ class Canvas {
 
             const x = event.movementX / this.zoom;
             const y = event.movementY / this.zoom;
-            context.translate(x, y);
+            this.context.translate(x, y);
             this.offsetX += x;
             this.offsetY += y;
         }
@@ -52,15 +52,15 @@ class Canvas {
         this.canvas.onwheel = (event) => {
             // Adapted from https://stackoverflow.com/a/3151987
             event.preventDefault();
-            const mouseX = event.clientX - canvas.offsetLeft;
-            const mouseY = event.clientY - canvas.offsetTop;
+            const mouseX = event.clientX - this.canvas.offsetLeft;
+            const mouseY = event.clientY - this.canvas.offsetTop;
             const wheel = Math.sign(-event.deltaY);
             const zoomFactor = Math.exp(wheel * 0.1);
-            context.translate(-this.offsetX, -this.offsetY);
-            context.scale(zoomFactor, zoomFactor);
+            this.context.translate(-this.offsetX, -this.offsetY);
+            this.context.scale(zoomFactor, zoomFactor);
             this.offsetX += mouseX / (this.zoom * zoomFactor) - mouseX / this.zoom;
             this.offsetY += mouseY / (this.zoom * zoomFactor) - mouseY / this.zoom;
-            context.translate(this.offsetX, this.offsetY);
+            this.context.translate(this.offsetX, this.offsetY);
             this.zoom *= zoomFactor;
         }
     }
@@ -73,67 +73,82 @@ class Canvas {
         return seconds / 3600 * this.widthFactor
     }
 
-    renderBackground() {
-        context.fillStyle = 'rgba(250, 250, 250)';
-        context.fillRect(
-            -this.offsetX,
-            -this.offsetY,
-            canvas.width / this.zoom,
-            canvas.height / this.zoom
-        );
+    convert({ screenX, screenY, screenW, screenH, x, y, w, h }) {
+        const result = {}
+        if (screenX)
+            result.x = screenX / this.zoom - this.offsetX
+        if (screenY)
+            result.y = screenY / this.zoom - this.offsetY
+        if (x)
+            result.screenX = (x + this.offsetX) * this.zoom
+        if (y)
+            result.screenY = (y + this.offsetY) * this.zoom
+        if (screenW)
+            result.w = screenW / this.zoom
+        if (screenH)
+            result.h = screenH / this.zoom
+        if (w)
+            result.screenW = w * this.zoom
+        if (h)
+            result.screenH = h * this.zoom
     }
 
-    renderTooltip([clientX, clientY]) {
-        const mouseX = clientX - canvas.offsetLeft;
-        const mouseY = clientY - canvas.offsetTop;
+    renderBackground() {
+        this.context.fillStyle = 'rgba(250, 250, 250)';
+        this.context.fillRect(
+            -this.offsetX,
+            -this.offsetY,
+            this.canvas.width / this.zoom,
+            this.canvas.height / this.zoom
+            );
+
+            this.context.fillStyle = 'black';
+            this.context.fillRect(10, 20, 30, 40)
+    }
+
+    renderTooltip() {
+        const [clientX, clientY] = this.currentMousePosition;
+        const mouseX = clientX - this.canvas.offsetLeft;
+        const mouseY = clientY - this.canvas.offsetTop;
         // TODO: Massive optimization. Compute mouseX and mouseY instead of converting all boxes
-        const coordinatesRelativeToScreen = boxes.map(({x, y, w, h, ...rest}) => ({
-            x: (x() + this.offsetX) * this.zoom,
-            y: (y + this.offsetY) * this.zoom,
-            w: w() * this.zoom,
-            h: h * this.zoom,
-            ...rest,
-        }));
+        // const coordinatesRelativeToScreen = globalThis.boxesXX.map(({x, y, w, h, ...rest}) => ({
+        //     x: (x() + this.offsetX) * this.zoom,
+        //     y: (y + this.offsetY) * this.zoom,
+        //     w: w() * this.zoom,
+        //     h: h * this.zoom,
+        //     ...rest,
+        // }));
 
-        coordinatesRelativeToScreen.forEach(({x, y, w, h, tooltip = '...'}) => {
-            const withinX = x < mouseX && mouseX < x + w;
-            const withinY = y < mouseY && mouseY < y + h;
+        // coordinatesRelativeToScreen.forEach(({x, y, w, h, tooltip = '...'}) => {
+        //     const withinX = x < mouseX && mouseX < x + w;
+        //     const withinY = y < mouseY && mouseY < y + h;
 
-            if (withinX && withinY) {
-                context.fillStyle = 'black'
-                context.fillText(tooltip, (x / this.zoom - this.offsetX), (y / this.zoom - this.offsetY) + 20)
-          }
-        });
+        //     if (withinX && withinY) {
+        //         this.context.fillStyle = 'black'
+        //         this.context.fillText(tooltip, (x / this.zoom - this.offsetX), (y / this.zoom - this.offsetY) + 20)
+        //   }
+        // });
     }
 
     renderBoxes() {
-        getNewBoxes
-        boxes.forEach(({ x, y, w, h, color, text }) => {
+        globalThis.boxesXX.forEach(({ x, y, w, h, color, text }) => {
             x = x();
             w = w();
-            context.fillStyle = color;
-            context.fillRect(x, y, w, h);
-            context.fillStyle = 'black';
-            context.fillText(text, x, y, w * 2);
+            this.context.fillStyle = color;
+            this.context.fillRect(x, y, w, h);
+            this.context.fillStyle = 'black';
+            this.context.fillText(text, x, y, w * 2);
         });
     }
 
     render() {
         this.renderBackground();
         this.renderBoxes();
-        this.renderTooltip(this.currentMousePosition);
+        this.renderTooltip();
         $('#width-value').innerHTML = this.widthFactor;
     }
 }
 
-
-async function getNewBoxes() {
-    const x = await fetch('/data');
-    const inputTextText = await x.text();
-    const inputText = JSON.parse(inputTextText, dateReviver)
-    console.log(inputText);
-    return inputToBoxes(inputText);
-}
 
 function inputToBoxes(input) {
     const boxes = [];
@@ -159,8 +174,20 @@ function inputToBoxes(input) {
     return boxes
 }
 
+globalThis.boxesXX = [];
+async function getNewBoxes() {
+    const x = await fetch('/data');
+    const inputTextText = await x.text();
+    const inputText = JSON.parse(inputTextText, dateReviver)
+    console.log(inputToBoxes(inputText));
+    return inputToBoxes(inputText);
+}
 
-const canv = Canvas();
+getNewBoxes().then(x => globalThis.boxesXX = x)
+
+
+const canv = new Canvas();
+canv.init();
 const interval = setInterval(() => canv.render(), 100)
 let _errorCount = 0;
 window.onerror = () => {
