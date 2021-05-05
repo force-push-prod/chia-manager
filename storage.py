@@ -33,7 +33,6 @@ def get_plots_from_disks(disks):
     return plots
 
 def get_new_file_content(old_plots, new_plots):
-    import datetime
     results = {}
     for plot_id, plot in new_plots.items():
         size = plot['size']
@@ -52,11 +51,12 @@ def get_new_file_content(old_plots, new_plots):
             'disk_path': plot['disk_path'],
             'start_time': plot['start_time'],
             'size': size,
-            'last_checked': datetime.datetime.now(),
+            'last_checked': now_tz_str(),
             'history': history,
         }
 
     return results
+
 
 if __name__ == '__main__':
     storage_disks_path = [
@@ -84,7 +84,9 @@ if __name__ == '__main__':
 
         old_plots = json.loads(content)
         new_saved = get_new_file_content(old_plots, plots)
-
         with open('/Users/yyin/farming-disk.json', 'w') as file:
             file.write(convert_object_to_str(new_saved))
 
+    else:
+        print('Unknown or empty option')
+        exit(1)

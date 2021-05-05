@@ -10,6 +10,16 @@ class PlotConfig():
         self.random_code = None
 
     @property
+    def disk_name(self):
+        match self.disk:
+            case 1 | 2 | 3:
+                return f'T7-{self.disk}'
+            case 4:
+                return 'ExFAT450'
+            case _:
+                assert False
+
+    @property
     def is_ssh(self):
         return self.device in ['mbp', 'j']
 
@@ -19,13 +29,7 @@ class PlotConfig():
             self.random_code = str(100000 + random.randint(0, 10000))[:5]
         log_file_name = f'{self.device}-disk{self.disk}-{self.random_code}.log'
 
-        match self.disk:
-            case 1 | 2 | 3:
-                disk_name = f'T7-{self.disk}'
-            case 4:
-                disk_name = 'ExFAT450'
-            case _:
-                assert False
+        disk_name = self.disk_name
 
         match self.device:
             case 'mbp2':
@@ -57,10 +61,13 @@ class PlotConfig():
 
         return plot_command.replace('\n', '').strip()
 
-    @property
-    def command_to_move(self):
-        pass
-
+    # @property
+    # def command_to_move(self):
+    #     match self.device:
+    #         case 'mbp2':
+    #             return f'mv {self.disk_name}/*.plot /Volumes/Chia01'
+            # case 'j':
+                # return f'scp {self.disk_name}/*.plot '
 
 
 class PlotProgress():
@@ -100,7 +107,11 @@ class Plot():
             print(self.plot_process.stderr)
             print('*' * 40)
             return
-        self.process_id = int(self.plot_process.stdout.strip())
+        self.process_id = int(self.plot_process.stdout.strip()) + 1
+
+        print('Started plotting process. pid=' + self.process_id)
+        print('Start watching the log with:\n')
+        print(self.command_to_watch)
 
 
     def update_progress(self):
@@ -114,3 +125,12 @@ class Plot():
         command.extend(['cat', self.config.log_path])
         log_process = subprocess.run(command, text=True, stdout=subprocess.PIPE)
         return log_process.stdout
+
+    @property
+    def command_to_watch(self):
+        command = []
+        if self.config.is_ssh:
+            command.extend(['ssh', self.config.device])
+        command.extend(['cat', self.config.log_path or '???'])
+
+        return 'watch -n 1800 "' + ' '.join(command) + ' | python ~/Developer/chia-manager/main.py"'
