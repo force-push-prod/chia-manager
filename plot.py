@@ -1,14 +1,11 @@
 import subprocess
 import random
 class PlotConfig():
-    def __init__(self, *, device, disk, buffer_size, thread, dir_tmp1, dir_dst, dir_tmp2=None):
+    def __init__(self, *, device, disk, buffer_size, threads):
         self.device = device
         self.disk = disk
         self.buffer_size = buffer_size
-        self.thread = thread
-        self.dir_tmp1 = dir_tmp1
-        self.dir_tmp2 = dir_tmp2 or dir_tmp1
-        self.dir_dst = dir_dst
+        self.threads = threads
         self.log_path = None
         self.random_code = None
 
@@ -35,28 +32,35 @@ class PlotConfig():
                 bootstrap_path = '/Users/yyin/Developer/chia-manager/bootstrap.py'
                 self.log_path = '/Users/yyin/' + log_file_name
                 disk_path = '/Volumes/' + disk_name
-                ssh_name = False
-            case 'mbp':
-                bootstrap_path = '/Users/yinyifei/Developer/chia-manager/bootstrap.py'
-                self.log_path = '/Users/yinyifei/' + log_file_name
-                disk_path = '/Volumes/' + disk_name
-                ssh_name = 'mbp'
+                python_path = '/Users/yyin/.pyenv/shims/python'
+                chia_path = '/Applications/Chia.app/Contents/Resources/app.asar.unpacked/daemon/chia'
+            # case 'mbp':
+            #     bootstrap_path = '/Users/yinyifei/bootstrap.py'
+            #     self.log_path = '/Users/yinyifei/' + log_file_name
+            #     disk_path = '/Volumes/' + disk_name
+            #     python_path = '/home/yy/chia-blockchain/venv/bin/python'
             case 'j':
-                bootstrap_path = '/home/yy/Developer/chia-manager/bootstrap.py'
+                bootstrap_path = '/home/yy/bootstrap.py'
                 self.log_path = '/home/yy/' + log_file_name
                 disk_path = '/media/yy/' + disk_name
-                ssh_name = 'j'
+                python_path = '/home/yy/chia-blockchain/venv/bin/python'
+                chia_path = '/home/yy/chia-blockchain/venv/bin/chia'
             case _:
                 assert False
 
         plot_command = f"""
-        python {bootstrap_path} {self.log_path}
-        chia plots create
+        {python_path} {bootstrap_path} {self.log_path}
+        {chia_path} plots create
             -n 1 -b {self.buffer_size} -r {self.threads}
             -t {disk_path} -2 {disk_path} -d {disk_path}
         """
 
         return plot_command.replace('\n', '').strip()
+
+    @property
+    def command_to_move(self):
+        pass
+
 
 
 class PlotProgress():
@@ -85,13 +89,17 @@ class Plot():
         self.progress = None
 
     def start(self):
-        command = ""
+        command = None
         if self.config.is_ssh:
             command = ["ssh", self.config.device, self.config.command_to_start]
         else:
-            command = [self.config.command_to_start]
-        self.plot_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.plot_process.wait()
+            command = self.config.command_to_start.split()
+        self.plot_process = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if self.plot_process.returncode != 0:
+            print('*' * 40)
+            print(self.plot_process.stderr)
+            print('*' * 40)
+            return
         self.process_id = int(self.plot_process.stdout.strip())
 
 
@@ -103,6 +111,6 @@ class Plot():
         command = []
         if self.config.is_ssh:
             command.extend(['ssh', self.config.device])
-        command.extend(['cat', self.config.log_file_path])
-        log_process =  subprocess.run(command, stdout=subprocess.PIPE, text=True)
+        command.extend(['cat', self.config.log_path])
+        log_process = subprocess.run(command, text=True, stdout=subprocess.PIPE)
         return log_process.stdout
