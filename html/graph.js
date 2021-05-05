@@ -21,7 +21,7 @@ class Canvas {
     get leftmostX() { return -this.offsetX; }
     get rightmostX() { return this.leftmostX + this.width; }
     get topmostY() { return -this.offsetY; }
-    get bottommostY() { return this.offsetY + this.height; }
+    get bottommostY() { return this.topmostY + this.height; }
 
     init() {
         $('#width-up').onclick = () => { this.widthFactor = R.clamp(0, 200, this.widthFactor + 10); }
@@ -63,7 +63,7 @@ class Canvas {
     }
 
     timestampToX(date) { return this.secondsToW((date - new Date(2021, 4, 4)) / 1000) }
-    XToTimestamp(x) { const a = new Date(2021, 4, 4); a.setSeconds(this.WToSeconds(x) * 1000); return a; }
+    XToTimestamp(x) { return new Date(+ new Date(2021, 4, 4) + this.WToSeconds(x) * 1000); }
     secondsToW(s) { return s / 3600 * this.widthFactor }
     WToSeconds(w) { return w * 3600 / this.widthFactor }
 
@@ -97,11 +97,21 @@ class Canvas {
         leftMostTimeRoundedDown.setMinutes(0);
         leftMostTimeRoundedDown.setSeconds(0, 0);
 
+        const x = this.timestampToX(new Date());
+        this.ctx.beginPath();
+        this.ctx.strokeStyle = 'red';
+        this.ctx.moveTo(x, this.topmostY);
+        this.ctx.lineTo(x, this.bottommostY);
+        this.ctx.closePath();
+        this.ctx.stroke();
+
+
         for (const h of R.range(0, 48)) {
             const tmpDate = new Date(leftMostTimeRoundedDown);
             tmpDate.setHours(tmpDate.getHours() + h);
             const x = this.timestampToX(tmpDate);
             this.ctx.beginPath();
+            this.ctx.strokeStyle = 'black';
             this.ctx.moveTo(x, this.topmostY);
             this.ctx.lineTo(x, this.bottommostY);
             this.ctx.closePath();
@@ -142,13 +152,14 @@ class Canvas {
     }
 
     render() {
+        $('#debug').innerHTML = ''
         this.renderBackground();
         this.renderTimeline();
         this.renderBoxes();
         this.renderTooltip();
         $('#width-value').innerHTML = this.widthFactor;
         $('#mouse-time').innerHTML = formatTime(this.currentPositionTime);
-        $('#debug').innerHTML = `
+        $('#debug').innerHTML += `
                 ${this.topmostY}
         ${this.leftmostX}                        ${this.rightmostX}
 
