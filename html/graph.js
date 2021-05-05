@@ -55,7 +55,7 @@ function secondsToWidth(seconds) {
 function inputToBoxes(input) {
     const boxes = [];
     input.forEach((plot, index) => {
-        for (let stageId of [1,2,3,4]) {
+        for (let stageId of [1, 2, 3, 4]) {
             if (!(stageId in plot['stages_start_time']))
                 continue
 
@@ -160,11 +160,10 @@ canvas.onmouseup = () => { isMouseDown = false; }
 
 
 canvas.onmousemove = (event) => {
-    if (!isMouseDown) {
-        // console.count();
-        currentMousePosition = [event.clientX, event.clientY];
+    currentMousePosition = [event.clientX, event.clientY];
+
+    if (!isMouseDown)
         return;
-    }
 
     const x = event.movementX / zoom;
     const y = event.movementY / zoom;
