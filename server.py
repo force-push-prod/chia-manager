@@ -12,7 +12,7 @@ serverPort = 5500
 
 from helper import *
 
-FILES = { 'graph.js': '', 'index.html': ''}
+FILES = { 'graph.js': '', 'index.html': '', 'helpers.js': ''}
 def load_files():
     for file in FILES.keys():
         with open('html/' + file, 'r') as content:
@@ -23,11 +23,12 @@ class MyServer(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/':
+            load_files()
             self.respond(FILES['index.html'], 'html')
 
-        if self.path == '/graph.js':
+        if self.path.strip('/') in FILES.keys():
             load_files()
-            self.respond(FILES['graph.js'], 'js')
+            self.respond(FILES[self.path.strip('/')], 'js')
 
         if self.path == '/data':
             x = run_shell_get_stdout('cat ~/mbp2-disk1-1.log | python ~/Developer/chia-manager/main.py js')

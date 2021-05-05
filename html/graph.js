@@ -1,24 +1,8 @@
-function $(selector, base = null) {
-    base = (base === null) ? document : base;
-    return base.querySelector(selector);
-}
-
-function $$(selector, base = null) {
-    base = (base === null) ? document : base;
-    return Array.from(base.querySelectorAll(selector));
-}
-
-function dateReviver(k, v) {
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*(([-+]\d{4})|Z)$/.test(v)) return new Date(v);
-    // HACK: If there is no timezone, default to EDT
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)) return new Date(v + '-0400');
-    else return v;
-}
-
+'use strict';
 
 class Canvas {
     canvas = document.querySelector('canvas');
-    context = canvas.getContext('2d');
+    ctx = this.canvas.getContext('2d');
 
     zoom = 1.0;
     offsetX = 0.0;
@@ -27,7 +11,17 @@ class Canvas {
 
     widthFactor = 100;
 
-    currentMousePosition = [0, 0];
+    mouseX = 0;
+    mouseY = 0;
+
+    get screenWidth() { return this.canvas.width; }
+    get screenHeight() { return this.canvas.height; }
+    get width() { return this.convert({screenW: this.screenWidth}).w() }
+    get height() { return this.convert({screenH: this.screenHeight}).h() }
+    get leftmostX() { return -this.offsetX; }
+    get rightmostX() { return this.leftmostX + this.width; }
+    get topmostY() { return -this.offsetY; }
+    get bottommostY() { return this.offsetY + this.height; }
 
     init() {
         $('#width-up').onclick = () => { this.widthFactor = R.clamp(0, 200, this.widthFactor + 10); }
@@ -38,13 +32,16 @@ class Canvas {
 
         this.canvas.onmousemove = (event) => {
             if (!this.isMouseDown) {
-                this.currentMousePosition = [event.clientX, event.clientY];
+                const mouseScreenX = event.clientX - this.canvas.offsetLeft;
+                const mouseScreenY = event.clientY - this.canvas.offsetTop;
+                this.mouseX = this.convert({ screenX: mouseScreenX }).x();
+                this.mouseY = this.convert({ screenY: mouseScreenY }).y();
                 return;
             }
 
             const x = event.movementX / this.zoom;
             const y = event.movementY / this.zoom;
-            this.context.translate(x, y);
+            this.ctx.translate(x, y);
             this.offsetX += x;
             this.offsetY += y;
         }
@@ -56,60 +53,74 @@ class Canvas {
             const mouseY = event.clientY - this.canvas.offsetTop;
             const wheel = Math.sign(-event.deltaY);
             const zoomFactor = Math.exp(wheel * 0.1);
-            this.context.translate(-this.offsetX, -this.offsetY);
-            this.context.scale(zoomFactor, zoomFactor);
+            this.ctx.translate(-this.offsetX, -this.offsetY);
+            this.ctx.scale(zoomFactor, zoomFactor);
             this.offsetX += mouseX / (this.zoom * zoomFactor) - mouseX / this.zoom;
             this.offsetY += mouseY / (this.zoom * zoomFactor) - mouseY / this.zoom;
-            this.context.translate(this.offsetX, this.offsetY);
+            this.ctx.translate(this.offsetX, this.offsetY);
             this.zoom *= zoomFactor;
         }
     }
 
-    timestampToX(date) {
-        return secondsToWidth((date - new Date(2021, 4, 4)) / 1000)
-    }
+    timestampToX(date) { return this.secondsToW((date - new Date(2021, 4, 4)) / 1000) }
+    XToTimestamp(x) { const a = new Date(2021, 4, 4); a.setSeconds(this.WToSeconds(x) * 1000); return a; }
+    secondsToW(s) { return s / 3600 * this.widthFactor }
+    WToSeconds(w) { return w * 3600 / this.widthFactor }
 
-    secondsToWidth(seconds) {
-        return seconds / 3600 * this.widthFactor
-    }
-
-    convert({ screenX, screenY, screenW, screenH, x, y, w, h }) {
+    convert({ screenX, screenY, screenW, screenH, x, y, w, h, ...rest }) {
         const result = {}
-        if (screenX)
-            result.x = screenX / this.zoom - this.offsetX
-        if (screenY)
-            result.y = screenY / this.zoom - this.offsetY
-        if (x)
-            result.screenX = (x + this.offsetX) * this.zoom
-        if (y)
-            result.screenY = (y + this.offsetY) * this.zoom
-        if (screenW)
-            result.w = screenW / this.zoom
-        if (screenH)
-            result.h = screenH / this.zoom
-        if (w)
-            result.screenW = w * this.zoom
-        if (h)
-            result.screenH = h * this.zoom
+        if (Object.keys(rest).length > 0) throw new Error('Extra params are passed: ' + Object.keys(rest))
+        if (screenX !== undefined) result.x = () => screenX / this.zoom - this.offsetX
+        if (screenY !== undefined) result.y = () => screenY / this.zoom - this.offsetY
+        if (x !== undefined) result.screenX = () => (x + this.offsetX) * this.zoom
+        if (y !== undefined) result.screenY = () => (y + this.offsetY) * this.zoom
+        if (screenW !== undefined) result.w = () => screenW / this.zoom
+        if (screenH !== undefined) result.h = () => screenH / this.zoom
+        if (w !== undefined) result.screenW = () => w * this.zoom
+        if (h !== undefined) result.screenH = () => h * this.zoom
+        if (Object.keys(result).length == 0) throw new Error('result is empty. Did you forget to pass a key?')
+        return result
+    }
+
+    get currentPositionTime() {
+        return this.XToTimestamp(this.mouseX);
     }
 
     renderBackground() {
-        this.context.fillStyle = 'rgba(250, 250, 250)';
-        this.context.fillRect(
-            -this.offsetX,
-            -this.offsetY,
-            this.canvas.width / this.zoom,
-            this.canvas.height / this.zoom
-            );
+        this.ctx.fillStyle = 'rgba(250, 250, 250)';
+        this.ctx.fillRect( -this.offsetX, -this.offsetY, this.canvas.width / this.zoom, this.canvas.height / this.zoom);
+    }
 
-            this.context.fillStyle = 'black';
-            this.context.fillRect(10, 20, 30, 40)
+    renderTimeline() {
+        const leftMostTime = this.XToTimestamp(this.leftmostX);
+        const leftMostTimeRoundedDown = new Date(leftMostTime);
+        leftMostTimeRoundedDown.setMinutes(0);
+        leftMostTimeRoundedDown.setSeconds(0, 0);
+
+        for (const h of R.range(0, 48)) {
+            const tmpDate = new Date(leftMostTimeRoundedDown);
+            tmpDate.setHours(tmpDate.getHours() + h);
+            const x = this.timestampToX(tmpDate);
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, this.topmostY);
+            this.ctx.lineTo(x, this.bottommostY);
+            this.ctx.closePath();
+            this.ctx.stroke();
+        }
+    }
+
+    renderBoxes() {
+        // globalThis.boxesXX.forEach(({ x, y, w, h, color, text }) => {
+        //     x = x();
+        //     w = w();
+        //     this.context.fillStyle = color;
+        //     this.context.fillRect(x, y, w, h);
+        //     this.context.fillStyle = 'black';
+        //     this.context.fillText(text, x, y, w * 2);
+        // });
     }
 
     renderTooltip() {
-        const [clientX, clientY] = this.currentMousePosition;
-        const mouseX = clientX - this.canvas.offsetLeft;
-        const mouseY = clientY - this.canvas.offsetTop;
         // TODO: Massive optimization. Compute mouseX and mouseY instead of converting all boxes
         // const coordinatesRelativeToScreen = globalThis.boxesXX.map(({x, y, w, h, ...rest}) => ({
         //     x: (x() + this.offsetX) * this.zoom,
@@ -130,22 +141,19 @@ class Canvas {
         // });
     }
 
-    renderBoxes() {
-        globalThis.boxesXX.forEach(({ x, y, w, h, color, text }) => {
-            x = x();
-            w = w();
-            this.context.fillStyle = color;
-            this.context.fillRect(x, y, w, h);
-            this.context.fillStyle = 'black';
-            this.context.fillText(text, x, y, w * 2);
-        });
-    }
-
     render() {
         this.renderBackground();
+        this.renderTimeline();
         this.renderBoxes();
         this.renderTooltip();
         $('#width-value').innerHTML = this.widthFactor;
+        $('#mouse-time').innerHTML = formatTime(this.currentPositionTime);
+        $('#debug').innerHTML = `
+                ${this.topmostY}
+        ${this.leftmostX}                        ${this.rightmostX}
+
+                ${this.bottommostY}
+        `
     }
 }
 
@@ -175,24 +183,26 @@ function inputToBoxes(input) {
 }
 
 globalThis.boxesXX = [];
-async function getNewBoxes() {
-    const x = await fetch('/data');
-    const inputTextText = await x.text();
-    const inputText = JSON.parse(inputTextText, dateReviver)
-    console.log(inputToBoxes(inputText));
-    return inputToBoxes(inputText);
-}
+// async function getNewBoxes() {
+//     const x = await fetch('/data');
+//     const inputTextText = await x.text();
+//     const inputText = JSON.parse(inputTextText, dateReviver)
+//     console.log(inputToBoxes(inputText));
+//     return inputToBoxes(inputText);
+// }
 
-getNewBoxes().then(x => globalThis.boxesXX = x)
+// getNewBoxes().then(x => globalThis.boxesXX = x)
 
 
 const canv = new Canvas();
 canv.init();
 const interval = setInterval(() => canv.render(), 100)
 let _errorCount = 0;
+
 window.onerror = () => {
     _errorCount++;
-    if (_errorCount > 10)
-        clearInterval(interval)
+    if (_errorCount > 10) {
+        clearInterval(interval);
+    }
 }
 
