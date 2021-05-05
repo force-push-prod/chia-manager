@@ -8,24 +8,6 @@ function $$(selector, base = null) {
     return Array.from(base.querySelectorAll(selector));
 }
 
-
-const canvas = document.querySelector('canvas');
-const context = canvas.getContext('2d');
-
-let zoom = 1.0;
-let offsetX = 0.0;
-let offsetY = 0.0;
-let isMouseDown = false;
-
-let widthFactor = 100;
-
-let currentMousePosition = [0, 0];
-
-
-
-let boxes = [];
-
-
 function dateReviver(k, v) {
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*(([-+]\d{4})|Z)$/.test(v)) return new Date(v);
     // HACK: If there is no timezone, default to EDT
@@ -33,23 +15,124 @@ function dateReviver(k, v) {
     else return v;
 }
 
-async function updateBoxes() {
+
+class Canvas {
+    canvas = document.querySelector('canvas');
+    context = canvas.getContext('2d');
+
+    zoom = 1.0;
+    offsetX = 0.0;
+    offsetY = 0.0;
+    isMouseDown = false;
+
+    widthFactor = 100;
+
+    currentMousePosition = [0, 0];
+
+    init() {
+        $('#width-up').onclick = () => { this.widthFactor = R.clamp(0, 200, this.widthFactor + 10); }
+        $('#width-down').onclick = () => { this.widthFactor = R.clamp(0, 200, this.widthFactor - 10); }
+
+        this.canvas.onmousedown = () => { this.isMouseDown = true; }
+        this.canvas.onmouseup = () => { this.isMouseDown = false; }
+
+        this.canvas.onmousemove = (event) => {
+            if (!this.isMouseDown) {
+                this.currentMousePosition = [event.clientX, event.clientY];
+                return;
+            }
+
+            const x = event.movementX / this.zoom;
+            const y = event.movementY / this.zoom;
+            context.translate(x, y);
+            this.offsetX += x;
+            this.offsetY += y;
+        }
+
+        this.canvas.onwheel = (event) => {
+            // Adapted from https://stackoverflow.com/a/3151987
+            event.preventDefault();
+            const mouseX = event.clientX - canvas.offsetLeft;
+            const mouseY = event.clientY - canvas.offsetTop;
+            const wheel = Math.sign(-event.deltaY);
+            const zoomFactor = Math.exp(wheel * 0.1);
+            context.translate(-this.offsetX, -this.offsetY);
+            context.scale(zoomFactor, zoomFactor);
+            this.offsetX += mouseX / (this.zoom * zoomFactor) - mouseX / this.zoom;
+            this.offsetY += mouseY / (this.zoom * zoomFactor) - mouseY / this.zoom;
+            context.translate(this.offsetX, this.offsetY);
+            this.zoom *= zoomFactor;
+        }
+    }
+
+    timestampToX(date) {
+        return secondsToWidth((date - new Date(2021, 4, 4)) / 1000)
+    }
+
+    secondsToWidth(seconds) {
+        return seconds / 3600 * this.widthFactor
+    }
+
+    renderBackground() {
+        context.fillStyle = 'rgba(250, 250, 250)';
+        context.fillRect(
+            -this.offsetX,
+            -this.offsetY,
+            canvas.width / this.zoom,
+            canvas.height / this.zoom
+        );
+    }
+
+    renderTooltip([clientX, clientY]) {
+        const mouseX = clientX - canvas.offsetLeft;
+        const mouseY = clientY - canvas.offsetTop;
+        // TODO: Massive optimization. Compute mouseX and mouseY instead of converting all boxes
+        const coordinatesRelativeToScreen = boxes.map(({x, y, w, h, ...rest}) => ({
+            x: (x() + this.offsetX) * this.zoom,
+            y: (y + this.offsetY) * this.zoom,
+            w: w() * this.zoom,
+            h: h * this.zoom,
+            ...rest,
+        }));
+
+        coordinatesRelativeToScreen.forEach(({x, y, w, h, tooltip = '...'}) => {
+            const withinX = x < mouseX && mouseX < x + w;
+            const withinY = y < mouseY && mouseY < y + h;
+
+            if (withinX && withinY) {
+                context.fillStyle = 'black'
+                context.fillText(tooltip, (x / this.zoom - this.offsetX), (y / this.zoom - this.offsetY) + 20)
+          }
+        });
+    }
+
+    renderBoxes() {
+        getNewBoxes
+        boxes.forEach(({ x, y, w, h, color, text }) => {
+            x = x();
+            w = w();
+            context.fillStyle = color;
+            context.fillRect(x, y, w, h);
+            context.fillStyle = 'black';
+            context.fillText(text, x, y, w * 2);
+        });
+    }
+
+    render() {
+        this.renderBackground();
+        this.renderBoxes();
+        this.renderTooltip(this.currentMousePosition);
+        $('#width-value').innerHTML = this.widthFactor;
+    }
+}
+
+
+async function getNewBoxes() {
     const x = await fetch('/data');
     const inputTextText = await x.text();
     const inputText = JSON.parse(inputTextText, dateReviver)
     console.log(inputText);
-    boxes = inputToBoxes(inputText);
-}
-
-updateBoxes();
-
-function timestampToX(date) {
-    // console.log(secondsToWidth(date - new Date(2021, 4, 1)));
-    return secondsToWidth((date - new Date(2021, 4, 4)) / 1000)
-}
-
-function secondsToWidth(seconds) {
-    return seconds / 3600 * widthFactor
+    return inputToBoxes(inputText);
 }
 
 function inputToBoxes(input) {
@@ -76,103 +159,9 @@ function inputToBoxes(input) {
     return boxes
 }
 
-function drawBackground() {
-    context.fillStyle = 'rgba(250, 250, 250)';
-    context.fillRect(
-        -offsetX,
-        -offsetY,
-        canvas.width / zoom,
-        canvas.height / zoom
-    );
-}
 
-function drawBoxes() {
-    boxes.forEach(({ x, y, w, h, color, text }) => {
-        x = x();
-        w = w();
-        context.fillStyle = color;
-        context.fillRect(x, y, w, h);
-        context.fillStyle = 'black';
-        context.fillText(text, x, y, w * 2);
-    });
-}
-
-function render() {
-    drawBackground();
-    drawBoxes();
-    drawTooltip(currentMousePosition);
-    $('#width-value').innerHTML = widthFactor;
-
-}
-
-function drawTooltip([clientX, clientY]) {
-    const mouseX = clientX - canvas.offsetLeft;
-    const mouseY = clientY - canvas.offsetTop;
-    // TODO: Massive optimization. Compute mouseX and mouseY instead of converting all boxes
-    const coordinatesRelativeToScreen = boxes.map(({x, y, w, h, ...rest}) => ({
-        x: (x() + offsetX) * zoom,
-        y: (y + offsetY) * zoom,
-        w: w() * zoom,
-        h: h * zoom,
-        ...rest,
-    }));
-
-    coordinatesRelativeToScreen.forEach(({x, y, w, h, tooltip = '...'}) => {
-        const withinX = x < mouseX && mouseX < x + w;
-        const withinY = y < mouseY && mouseY < y + h;
-
-        if (withinX && withinY) {
-            context.fillStyle = 'black'
-            context.fillText(tooltip, (x / zoom - offsetX), (y / zoom - offsetY) + 20)
-      }
-    });
-}
-
-
-// HANDLERS - buttons
-$('#width-up').onclick = () => { widthFactor = R.clamp(0, 200, widthFactor + 10); }
-$('#width-down').onclick = () => { widthFactor = R.clamp(0, 200, widthFactor - 10); }
-
-
-
-
-// HANDLERS - canvas
-
-canvas.onwheel = (event) => {
-    // Adapted from https://stackoverflow.com/a/3151987
-    event.preventDefault();
-    const mouseX = event.clientX - canvas.offsetLeft;
-    const mouseY = event.clientY - canvas.offsetTop;
-    const wheel = Math.sign(-event.deltaY);
-    const zoomFactor = Math.exp(wheel * 0.1);
-    context.translate(-offsetX, -offsetY);
-    context.scale(zoomFactor, zoomFactor);
-    offsetX += mouseX / (zoom * zoomFactor) - mouseX / zoom;
-    offsetY += mouseY / (zoom * zoomFactor) - mouseY / zoom;
-    context.translate(offsetX, offsetY);
-    zoom *= zoomFactor;
-}
-
-
-canvas.onmousedown = () => { isMouseDown = true; }
-canvas.onmouseup = () => { isMouseDown = false; }
-
-
-
-canvas.onmousemove = (event) => {
-    currentMousePosition = [event.clientX, event.clientY];
-
-    if (!isMouseDown)
-        return;
-
-    const x = event.movementX / zoom;
-    const y = event.movementY / zoom;
-    context.translate(x, y);
-    offsetX += x;
-    offsetY += y;
-}
-
-const interval = setInterval(render, 100)
+const canv = Canvas();
+const interval = setInterval(() => canv.render(), 100)
 let _errorCount = 0;
 window.onerror = () => {
     _errorCount++;
