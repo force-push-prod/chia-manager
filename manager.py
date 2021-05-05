@@ -9,13 +9,13 @@ match sys.argv[1]:
     case 'case1':
         config = PlotConfig(device='mbp2', disk=1, buffer_size=8000, threads=3)
         p = Plot(config)
-        sleep(7 * 3600)
+        # sleep(7 * 3600)
         p.start()
     case 'case2':
         config = PlotConfig(device='mbp2', disk=2, buffer_size=8000, threads=3)
         p = Plot(config)
-        sleep(5 * 3600)
         p.start()
+        # sleep(5 * 3600)
     case 'case3':
         config = PlotConfig(device='j', disk=3, buffer_size=8000, threads=6)
         p = Plot(config)

@@ -109,7 +109,7 @@ class Plot():
             return
         self.process_id = int(self.plot_process.stdout.strip()) + 1
 
-        print('Started plotting process. pid=' + self.process_id)
+        print('Started plotting process. pid=' + str(self.process_id))
         print('Start watching the log with:\n')
         print(self.command_to_watch)
 
@@ -133,4 +133,4 @@ class Plot():
             command.extend(['ssh', self.config.device])
         command.extend(['cat', self.config.log_path or '???'])
 
-        return 'watch -n 1800 "' + ' '.join(command) + ' | python ~/Developer/chia-manager/main.py"'
+        return 'watch -n 180 "' + ' '.join(command) + ' | python ~/Developer/chia-manager/main.py"'
