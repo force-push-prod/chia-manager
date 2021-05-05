@@ -13,10 +13,11 @@ serverPort = 5500
 from helper import *
 
 FILES = { 'graph.js': '', 'index.html': ''}
-for file in FILES.keys():
-    with open('html/' + file, 'r') as content:
-        FILES[file] = content.read()
-
+def load_files():
+    for file in FILES.keys():
+        with open('html/' + file, 'r') as content:
+            FILES[file] = content.read()
+load_files()
 
 class MyServer(BaseHTTPRequestHandler):
 
@@ -25,6 +26,7 @@ class MyServer(BaseHTTPRequestHandler):
             self.respond(FILES['index.html'], 'html')
 
         if self.path == '/graph.js':
+            load_files()
             self.respond(FILES['graph.js'], 'js')
 
         if self.path == '/data':
