@@ -14,7 +14,7 @@ class PlotConfig():
 
     @property
     def is_ssh(self):
-        pass
+        return self.device in ['mbp', 'j']
 
     @property
     def command_to_start(self):
