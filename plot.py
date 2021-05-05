@@ -52,7 +52,7 @@ class PlotConfig():
         plot_command = f"""
         python {bootstrap_path} {self.log_path}
         chia plots create
-            -n 1 -b {self.buffer} -r {self.threads}
+            -n 1 -b {self.buffer_size} -r {self.threads}
             -t {disk_path} -2 {disk_path} -d {disk_path}
         """
 
