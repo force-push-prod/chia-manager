@@ -15,6 +15,8 @@ def now_tz_str():
 def now_no_tz_str():
     return now_no_tz().isoformat()
 
+def now_epoch_seconds():
+    return round(datetime.datetime.now().timestamp())
 
 def parse_iso(s: str):
     try:

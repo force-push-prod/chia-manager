@@ -1,110 +1,79 @@
 import subprocess
-import random
 
+from helper import *
+import base64
+
+def encode(s):
+    return base64.b32encode(s.encode()).decode()
 
 class PlotDevice():
-    def __init__(self, *, is_ssh, log_dir_path, disk_dir_path, chia_path, python_path, boostrap_path):
-        self.is_ssh = is_ssh
+    def __init__(self, *, ssh_name, log_dir_path, disk_dir_path, chia_path, python_path, bootstrap_path):
+        self.ssh_name = ssh_name
         self.log_dir_path = log_dir_path
         self.disk_dir_path = disk_dir_path
         self.chia_path = chia_path
         self.python_path = python_path
-        self.boostrap_path = boostrap_path
+        self.bootstrap_path = bootstrap_path
+        self.disks: list[PlotDisk] = []
 
-    def execute_async_command(self, log_file_name, remote_command):
-        local_command = []
-        if self.is_ssh:
-            local_command.extend(['ssh', self.config.device])
+    def add_disk(self, disk):
+        self.disks.append(disk)
 
-        log_file_path = self.log_dir_path + '/' + log_file_name
-        local_command.extend([self.python_path, self.bootstrap_path, log_file_path, remote_command])
+    def execute_no_wait_command(self, log_file_name, remote_command):
+        log_file_path = self.construct_log_file_path(log_file_name)
 
-        log_process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE)
+        local_command = [self.python_path, self.bootstrap_path, log_file_path, encode(remote_command)]
 
-        return log_process.stdout
+        if self.ssh_name:
+            local_command = ['ssh', self.ssh_name, *local_command]
 
-
-    def execute_sync_command(self, remote_command):
-        local_command = []
-        if self.is_ssh:
-            local_command.extend(['ssh', self.config.device])
-
-        local_command.extend([remote_command])
-
-        log_process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE)
-
-        return log_process.stdout
+        process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return process.stderr, process.stdout
 
 
-mbp2 = PlotDevice(
-    is_ssh=False,
-    log_dir_path='/Users/yyin/',
-    disk_dir_path='/Volumes/',
-    chia_path='/Applications/Chia.app/Contents/Resources/app.asar.unpacked/daemon/chia',
-    python_path='/Users/yyin/.pyenv/shims/python',
-    boostrap_path='/Users/yyin/Developer/chia-manager/bootstrap.py',
-)
+    def execute_and_wait_command(self, command_components):
+        local_command = command_components
+
+        if self.ssh_name:
+            local_command = ['ssh', self.ssh_name, *local_command]
+
+        process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return process.stderr, process.stdout
 
 
-j = PlotDevice(
-    is_ssh=True,
-    log_dir_path='/home/yy/',
-    disk_dir_path='/media/yy/',
-    chia_path='/home/yy/chia-blockchain/venv/bin/chia',
-    python_path='/home/yy/chia-blockchain/venv/bin/python',
-    boostrap_path='/home/yy/bootstrap.py',
-)
+    def construct_log_file_path(self, file_name):
+        return self.log_dir_path + file_name
 
 
+@dataclass(init=True, repr=True, frozen=True)
 class PlotConfig():
-    def __init__(self, *, device, disk_id, buffer_size, threads):
-        self.device: PlotDevice = device
-        self.disk_id = disk_id
-        self.buffer_size = buffer_size
-        self.threads = threads
-        self.log_path = None
-        self.random_code = None
+    buffer: int = 0
+    threads: int = 0
+
+
+class PlotDisk():
+    def __init__(self, disk_volume_name):
+        assert disk_volume_name in ['T7-1', 'T7-2', 'T7-3', 'ExFAT450']
+        self.disk_volume_name: str = disk_volume_name
+        self.plots: list[Plot] = []
+
+    def add_plot(self, plot):
+        self.plots.append(plot)
 
     @property
-    def disk_name(self):
-        match self.disk_id:
-            case 1 | 2 | 3:
-                return f'T7-{self.disk_id}'
-            case 4:
-                return 'ExFAT450'
-            case _:
-                assert False
-
-    @property
-    def command_to_start(self):
-        if not self.random_code:
-            self.random_code = str(100000 + random.randint(0, 10000))[:5]
-
-        log_file_name = f'{self.device}-disk{self.disk_id}-{self.random_code}.log'
-
-        disk_path = self.device.disk_dir_path + '/' + self.disk_name
-
-        command = f"""
-        {chia_path} plots create
-            -n 1 -b {self.buffer_size} -r {self.threads}
-            -t {disk_path} -2 {disk_path} -d {disk_path}
-            | ts %Y-%m-%dT%H:%M:%S%z
-        """.replace('\n', '').strip()
-
-        stdout = self.device.execute_command(log_file_name, command)
-
-
+    def status(self):
+        return 'TODO'
 
 
 class PlotProgress():
     def __init__(self, log_file_lines=None):
+        self.plot_id = ''
         self.stages_start_time = {}
         self.stages_took_seconds = {}
         self.total_time_seconds = 0.0
         self.current_bucket = 0
         self.current_table = 0
         self.error = ''
-        self.stages = []
         self.last_alive = ''
         self.last_3_lines = []
 
@@ -112,55 +81,166 @@ class PlotProgress():
             for line in log_file_lines:
                 self.consume_line(line)
 
-    def consume_line(self, line):
-        pass
+    def __repr__(self):
+        return f'Plot(plot_id={shorten_plot_id(self.plot_id)}, current_stage={self.current_stage})'
+
+    @property
+    def current_stage(self):
+        """
+        0 is not started. 5 is finished. 1 to 4 correspond to 4 stages of the mining.
+        """
+        if self.total_time_seconds != 0.0:
+            return 5
+        return max([0, *self.stages_start_time.keys()])
+
+
+    def consume_line(self, line_raw: str):
+        MAX_TABLE = 7
+        line: list[str] = line_raw.strip().split()
+
+        if len(line) == 0:
+            return
+
+        line_timestamp = parse_iso(line.pop(0))
+        self.last_alive = line_timestamp
+
+        self.last_3_lines.append(SP.join(line))
+        if len(self.last_3_lines) > 3: self.last_3_lines.pop(0)
+
+        match line:
+            # case [timestamp, 'chia.plotting.create_plots', ':', 'INFO', 'Creating', plot_total_count, 'plots', *_]:
+            #     self.info.start_time = datetime.datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S.%f')
+            #     self.info.plot_total_count = int(plot_total_count)
+
+            # Starting plotting progress into temporary dirs
+            case ['Starting', 'plotting', *_, 'dirs:', dir_tmp1, 'and', dir_tmp2]:
+                if self.current_stage != 0:
+                    # raise NextPlotException()
+                    raise Exception('NextPlot')
+                # self.info.dir_tmp1 = dir_tmp1
+                # self.info.dir_tmp2 = dir_tmp2
+
+            case ['ID:', x]: self.plot_id = x
+            # case ['Plot', 'size', 'is:', x]:    self.info.plot_size = int(x)
+            # case ['Buffer', 'size', 'is:', x]:  self.info.config_buffer_size = x
+            # case ['Using', x, 'buckets']:       self.info.config_buckets = int(x)
+            # case ['Using', x, 'threads', *_, 'size', y]:
+            #     self.info.config_threads = int(x)
+            #     self.info.config_threads_stripe_size = int(y)
+
+            case ['Starting', 'phase', phase, *_]:
+                start_time = line_timestamp
+                phase_number = phase[0]
+                assert phase_number in '1234'
+                self.stages_start_time[int(phase_number)] = start_time
+
+            case ['Total', 'time', '=', x, 'seconds.', 'CPU', *_]:
+                self.total_time_seconds = float(x)
+
+            case ['Time', 'for', 'phase', phase_number, '=', seconds, *_]:
+                self.stages_took_seconds[int(phase_number)] = float(seconds)
+
+            # Phrase 1
+            case ['Computing', 'table', x]:
+                self.current_table = int(x) - 1
+
+            # Phrase 2
+            case ['Backpropagating', 'on', 'table', x]:
+                self.current_table = MAX_TABLE - (int(x) - 1)
+                self.current_bucket = 0
+
+            # Phrase 2
+            case ['scanned', 'table', *_]:
+                self.current_bucket = 1
+
+            # Phrase 3
+            case ['Compressing tables', x, 'and', _]:
+                self.current_table = (int(x) - 1) * 2
+
+            # Phrase 3
+            case ['First', 'computation', 'pass', 'time', *_]:
+                self.current_table += 1
+
+            # Phrase 1, 3, 4
+            case ['Bucket', x, 'uniform', 'sort.', *_]:
+                self.current_bucket = int(x)
+
+            case [*x]:
+                s = SP.join(x)
+                if 'err' in s.lower():
+                    self.error = s
+
+
 
 
 class Plot():
-    def __init__(self, config):
-        self.config = config
-        self.plot_id = None
-        self.process_id = None
-        self.plot_process = None
-        self.start_time = None
-        self.progress = None
-
-    def start(self):
-        command = None
-        if self.config.is_ssh:
-            command = ["ssh", self.config.device, self.config.command_to_start]
+    def __init__(self, log_file_name=None):
+        if log_file_name is not None:
+            self.log_file_name = log_file_name.replace('.log', '') + '.log'  # Handles cases with and without '.log'
         else:
-            command = self.config.command_to_start.split()
-        self.plot_process = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if self.plot_process.returncode != 0:
-            print('*' * 40)
-            print(self.plot_process.stderr)
-            print('*' * 40)
-            return
-        self.process_id = int(self.plot_process.stdout.strip()) + 1
+            self.log_file_name = hex(now_epoch_seconds()) + '.log'
+        self.progress = PlotProgress()
 
-        print('Started plotting process. pid=' + str(self.process_id))
-        print('Start watching the log with:\n')
-        print(self.command_to_watch)
-
-
-    def update_progress(self):
-        pass
-
-    def get_plot_logs(self):
-        """Returns text of the logs from remote machine"""
-        command = []
-        if self.config.is_ssh:
-            command.extend(['ssh', self.config.device])
-        command.extend(['cat', self.config.log_path])
-        log_process = subprocess.run(command, text=True, stdout=subprocess.PIPE)
-        return log_process.stdout
+    def __repr__(self):
+        return f'Plot(log_file_name={self.log_file_name})'
 
     @property
-    def command_to_watch(self):
-        command = []
-        if self.config.is_ssh:
-            command.extend(['ssh', self.config.device])
-        command.extend(['cat', self.config.log_path or '???'])
+    def current_stage(self):
+        return self.progress.current_stage
 
-        return 'watch -n 180 "' + ' '.join(command) + ' | python ~/Developer/chia-manager/main.py"'
+    @property
+    def set_new_progress_get_signals(self, new_progress: PlotProgress):
+        old_progress = self.progress
+        self.progress = new_progress
+
+        signals = []
+        if old_progress.current_stage != new_progress.current_stage:
+            assert new_progress.current_stage - old_progress.current_stage == 1
+            signals.append(StageUpdateSignal(before=new_progress.current_stage, after=new_progress.current_stage))
+
+        return signals
+
+    # def start(self):
+    #     command = None
+    #     if self.config.is_ssh:
+    #         command = ["ssh", self.config.device, self.config.command_to_start]
+    #     else:
+    #         command = self.config.command_to_start.split()
+    #     self.plot_process = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    #     if self.plot_process.returncode != 0:
+    #         print('*' * 40)
+    #         print(self.plot_process.stderr)
+    #         print('*' * 40)
+    #         return
+    #     self.process_id = int(self.plot_process.stdout.strip()) + 1
+
+    #     print('Started plotting process. pid=' + str(self.process_id))
+    #     print('Start watching the log with:\n')
+    #     print(self.command_to_watch)
+
+
+    # def update_progress(self):
+    #     pass
+
+    # def get_plot_logs(self):
+    #     """Returns text of the logs from remote machine"""
+    #     command = []
+    #     if self.config.is_ssh:
+    #         command.extend(['ssh', self.config.device])
+    #     command.extend(['cat', self.config.log_path])
+    #     log_process = subprocess.run(command, text=True, stdout=subprocess.PIPE)
+    #     return log_process.stdout
+
+    # @property
+    # def command_to_watch(self):
+    #     command = []
+    #     if self.config.is_ssh:
+    #         command.extend(['ssh', self.config.device])
+    #     command.extend(['cat', self.config.log_path or '???'])
+
+    #     return 'watch -n 180 "' + ' '.join(command) + ' | python ~/Developer/chia-manager/main.py"'
+
+
+
+
+
