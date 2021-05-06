@@ -16,6 +16,10 @@ class PlotDevice():
         self.bootstrap_path = bootstrap_path
         self.disks: list[PlotDisk] = []
 
+    def __repr__(self):
+        # TODO: hardcoded value
+        return 'Device(' + (self.ssh_name or 'mbp2') + ')'
+
     def add_disk(self, disk):
         self.disks.append(disk)
 
@@ -27,6 +31,7 @@ class PlotDevice():
         if self.ssh_name:
             local_command = ['ssh', self.ssh_name, *local_command]
 
+        print('EXECUTING no wait:', local_command)
         process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return process.stderr, process.stdout
 
@@ -37,7 +42,18 @@ class PlotDevice():
         if self.ssh_name:
             local_command = ['ssh', self.ssh_name, *local_command]
 
+        print('EXECUTING no shell:', local_command)
         process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return process.stderr, process.stdout
+
+    def execute_and_wait_command_shell(self, shell_command):
+        local_command = shell_command
+
+        if self.ssh_name:
+            local_command = SP.join(['ssh', self.ssh_name, local_command])
+
+        print('EXECUTING shell:', local_command)
+        process = subprocess.run(local_command, text=True, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return process.stderr, process.stdout
 
 
@@ -57,12 +73,18 @@ class PlotDisk():
         self.disk_volume_name: str = disk_volume_name
         self.plots: list[Plot] = []
 
+    def __repr__(self):
+        return f'Disk({self.disk_volume_name})'
+
     def add_plot(self, plot):
         self.plots.append(plot)
 
     @property
-    def status(self):
-        return 'TODO'
+    def is_idle(self):
+        for plot in self.plots:
+            if plot.current_stage != 5 and plot.current_stage != 0:
+                return False
+        return True
 
 
 class PlotProgress():
@@ -82,7 +104,11 @@ class PlotProgress():
                 self.consume_line(line)
 
     def __repr__(self):
-        return f'Plot(plot_id={shorten_plot_id(self.plot_id)}, current_stage={self.current_stage})'
+        if self.plot_id:
+            id_str = shorten_plot_id(self.plot_id)
+        else:
+            id_str = 'None'
+        return f'Progress({id_str}, stage={self.current_stage}, table={self.current_table}, bucket={self.current_bucket})'
 
     @property
     def current_stage(self):
@@ -165,22 +191,22 @@ class Plot():
         else:
             self.log_file_name = hex(now_epoch_seconds()) + '.log'
         self.progress = PlotProgress()
+        self.pid = 0
 
     def __repr__(self):
-        return f'Plot(log_file_name={self.log_file_name})'
+        return f'Plot({self.log_file_name}, {self.progress.__repr__()})'
 
     @property
     def current_stage(self):
         return self.progress.current_stage
 
-    @property
     def set_new_progress_get_signals(self, new_progress: PlotProgress):
         old_progress = self.progress
         self.progress = new_progress
 
         signals = []
         if old_progress.current_stage != new_progress.current_stage:
-            assert new_progress.current_stage - old_progress.current_stage == 1
-            signals.append(StageUpdateSignal(before=new_progress.current_stage, after=new_progress.current_stage))
+            # assert new_progress.current_stage - old_progress.current_stage == 1
+            signals.append(StageUpdateSignal(before=old_progress.current_stage, after=new_progress.current_stage))
 
         return signals

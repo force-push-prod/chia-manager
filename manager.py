@@ -1,40 +1,109 @@
-from typing import Dict
 from plot import *
 
 from helper import *
+import time
 
 class Manager():
     def __init__(self):
-        self.devices: Dict[PlotDevice] = {}
+        self.devices: list[PlotDevice] = []
         self.logs = []
+        self.move_file_timeout = 0
 
     def print_logs(self):
-        return print(NL.join([ SP.join(log) for log in self.logs ]))
+        return print(NL.join([ ' | \t'.join(log) for log in self.logs ]))
 
     def warning(self, *components):
-        self.logs.append([now_tz_str(), 'WARNING', SP.join(map(str, components))])
+        self.logs.append([now_tz_str(), '🟠 WARNING', SP.join(map(str, components))])
+        print(' | \t'.join(self.logs[-1]))
 
     def debug(self, *components):
-        self.logs.append([now_tz_str(), 'DEBUG', SP.join(map(str, components))])
+        self.logs.append([now_tz_str(), '⚪️ DEBUG', SP.join(map(str, components))])
+        print(' | \t'.join(self.logs[-1]))
 
     def info(self, *components):
-        self.logs.append([now_tz_str(), 'INFO', SP.join(map(str, components))])
+        self.logs.append([now_tz_str(), '🟢 INFO', SP.join(map(str, components))])
+        print(' | \t'.join(self.logs[-1]))
 
-    def routine(self):
-        new_signals = []
-        for device_id, device in self.devices.items():
-            for disk_id, disk in device.disks.items():
-                for plot_id, plot in disk.plots.items():
+    def info2(self, *components):
+        self.logs.append([now_tz_str(), '🔵 INFO', SP.join(map(str, components))])
+        print(' | \t'.join(self.logs[-1]))
+
+    def update_states(self):
+        # new_signals = []
+        for device in self.devices:
+            for disk in device.disks:
+                for plot in disk.plots:
+                    self.debug(f'update_states: Checking {device} {disk} {plot}')
                     new_progress = self.fetch_progress(device, plot)
-                    plot_singals = plot.set_new_progress_get_signals(new_progress)
-                    new_signals.extend(plot_singals)
+                    signals = plot.set_new_progress_get_signals(new_progress)
+                    for signal in signals:
+                        self.info2('update_states: Got signal', signal)
 
-        self.process_signals(new_signals)
+    def perform_actions(self):
+        for device in self.devices:
+            for disk in device.disks:
+                self.debug('disk.is_idle: Checking if', disk, 'is idle')
+                if disk.is_idle:
+                    new_plot = Plot()
+                    disk.add_plot(new_plot)
+                    # TODO: correlate device with config
+                    if device == mbp2: config = mbp2_config
+                    else: config = j_config
+                    self.start_plot(device, disk, config, new_plot)
 
+                # if disk.has_finished_plots:
+                #     pass
+
+                if self.move_file_timeout <= 0:
+                    file_names = self.get_finished_plot_file_paths(device, disk)
+                    for a in file_names:
+                        self.move_file(a, device, disk)
+                else:
+                    self.debug('move_file_timeout: skip check finished file; timeout', self.move_file_timeout)
+
+    def main_loop(self):
+        while True:
+            self.debug('============= update_state =============')
+            self.update_states()
+            self.debug('============= perform_actions =============')
+            self.perform_actions()
+
+            if self.move_file_timeout > 0:
+                self.move_file_timeout -= 1
+
+            time.sleep(60 * 5)
+        # self.process_signals(new_signals)
 
     # def process_signals(self):
     #     for signal in self.signals:
     #         signal
+
+    def get_finished_plot_file_paths(self, device: PlotDevice, disk: PlotDisk):
+        command = f'ls -1 {device.disk_dir_path}{disk.disk_volume_name}/*.plot'
+        stderr, stdout = device.execute_and_wait_command_shell(command)
+        if stderr != '' and stdout == '':
+            return []
+        elif stderr == '' and stdout != '':
+            return stdout.strip().split('\n')
+        else:
+            self.warning('Do not expect this case: stderr -->', stderr, 'stdout -->', stdout)
+            return []
+
+
+    def move_file(self, file_path, device: PlotDevice, disk: PlotDisk):
+        self.info(f'Moving {file_path} on {device} {disk}')
+        if 'plot' not in file_path:
+            self.warning('ERROR unexpected file_path', file_path)
+            return
+
+        if device == mbp2:
+            command = f'scp {file_path} admin@192.168.0.11:/share/Chia01/ && rm {file_path}'
+        else:
+            command = f'scp {file_path} admin@192.168.0.11:/share/Chia01/ && rm {file_path}'
+
+        stderr, stdout = device.execute_no_wait_command('move', command)
+        self.debug('stderr -->', stderr, 'stdout -->', stdout)
+        self.move_file_timeout = 18 # NOTE: 18 * 5 mins = 1.5 h
 
 
     def fetch_progress(self, device: PlotDevice, plot: Plot):
@@ -43,13 +112,14 @@ class Manager():
         command = ['cat', log_file_path]
         stderr, stdout = device.execute_and_wait_command(command)
         lines = stdout.split('\n')
-        self.info(f'Got log file with stdout len={len(stdout)} line={len(lines)}', 'starting with ', stdout[:50])
+        self.debug(f'fetch_progress: Got log file with stdout len={len(stdout)} line={len(lines)}', 'starting with ', stdout[:50])
         if stderr:
             self.warning(f'stderr is not empty:', stderr)
         return PlotProgress(lines)
 
 
     def start_plot(self, device: PlotDevice, disk: PlotDisk, config: PlotConfig, plot: Plot):
+        self.info(f'Starting a new plot on {device} {disk} with {config}')
         disk_path = device.disk_dir_path + disk.disk_volume_name
         command = f"""
         {device.chia_path} plots create
@@ -63,12 +133,13 @@ class Manager():
         if stderr != '':
             self.warning('Got non empty stderr', stderr)
         try:
-            pid = int(stdout)
+            pid = int(stdout) + 1
+            plot.pid = pid
         except Exception as e:
             pid = 0
             self.warning('Cannot convert stdout to int; it should be pid:', e, stdout)
 
-        self.info('Plotting started with pid', pid)
+        self.debug('Plotting started with pid', pid)
 
 
 
@@ -105,20 +176,25 @@ disk2 = PlotDisk(disk_volume_name='T7-2')
 disk3 = PlotDisk(disk_volume_name='T7-3')
 disk4 = PlotDisk(disk_volume_name='ExFAT450')
 
+# disk1.add_plot(Plot('0x60934159.log'))
+disk2.add_plot(Plot('0x60936278.log'))
+disk3.add_plot(Plot('0x609360a9.log'))
 
-# mbp2.add_disk(disk1)
-# mbp2.add_disk(disk2)
-# j.add_disk(disk3)
-# # mbp.add_disk(4, disk4)
+mbp2.add_disk(disk1)
+mbp2.add_disk(disk2)
+j.add_disk(disk3)
+# mbp.add_disk(4, disk4)
 
-# config = PlotConfig(buffer=8000, threads=3)
-# config2 = PlotConfig(buffer=8000, threads=6)
+mbp2_config = PlotConfig(buffer=8000, threads=3)
+j_config = PlotConfig(buffer=8000, threads=6)
 
-# manager = Manager()
+m = Manager()
 
-# print(manager.fetch_progress(j, Plot('0x609360a9.log')))
-# # new_plot = Plot()
-# # manager.start_plot(mbp2, disk2, config, new_plot)
-# # print(new_plot)
+m.devices = [mbp2, j]
 
-# manager.print_logs()
+# print(m.fetch_progress(j, ))
+# new_plot = Plot()
+# m.start_plot(mbp2, disk2, config, new_plot)
+# print(new_plot)
+
+# m.print_logs()
