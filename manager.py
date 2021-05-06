@@ -32,9 +32,9 @@ class Manager():
         self.process_signals(new_signals)
 
 
-    def process_signals(self):
-        for signal in self.signals:
-            signal
+    # def process_signals(self):
+    #     for signal in self.signals:
+    #         signal
 
 
     def fetch_progress(self, device: PlotDevice, plot: Plot):
@@ -106,106 +106,19 @@ disk3 = PlotDisk(disk_volume_name='T7-3')
 disk4 = PlotDisk(disk_volume_name='ExFAT450')
 
 
-mbp2.add_disk(disk1)
-mbp2.add_disk(disk2)
-j.add_disk(disk3)
-# mbp.add_disk(4, disk4)
+# mbp2.add_disk(disk1)
+# mbp2.add_disk(disk2)
+# j.add_disk(disk3)
+# # mbp.add_disk(4, disk4)
 
-config = PlotConfig(buffer=8000, threads=3)
-config2 = PlotConfig(buffer=8000, threads=6)
+# config = PlotConfig(buffer=8000, threads=3)
+# config2 = PlotConfig(buffer=8000, threads=6)
 
-manager = Manager()
+# manager = Manager()
 
-print(manager.fetch_progress(j, Plot('0x609360a9.log')))
-# new_plot = Plot()
-# manager.start_plot(mbp2, disk2, config, new_plot)
-# print(new_plot)
+# print(manager.fetch_progress(j, Plot('0x609360a9.log')))
+# # new_plot = Plot()
+# # manager.start_plot(mbp2, disk2, config, new_plot)
+# # print(new_plot)
 
-manager.print_logs()
-
-
-"""
-Manager
-    Device
-        Disk
-            Plot
-
-device: {
-    plotting 2 plots,
-    disk1: {
-        125 G left on disk,
-        plot 1a3b finished,
-        plot 1a3b in progress - stage 3,
-    }
-    disk2: {
-        125 G left on disk,
-        plot 1a3b finished,
-        plot 1a3b in progress - stage 3,
-    }
-}
-
-if (self disk1 is in stage1) {
-    move finished plot to
-}
-
-
-device.routine() = {
-    # Update progress
-    for each disk:
-        for each plot:
-            old_status = plot.status
-            new_status = get status
-            if old_status is not finished and new_status is finished:
-                plot.just_finished = true
-
-    if progress changed:
-        check what to do: start new one? move file?
-}
-
-ALTERNATIVE
-
-device.routine() = {
-    # Update progress
-    for each plot:
-        old_status = plot.status
-        new_status = get status
-        if old_status is not finished and new_status is finished:
-            signal_queue += ['stage_updated', disk_id, plot_id, 3 (changed to stage 3)]
-            signal_queue += ['stage_updated', disk_id, plot_id, 5 (finished)]
-
-    # Message queue
-    signal_queue += ['', plot_id, 5 (finished)]
-}
-
-
-"""
-
-
-
-# config = PlotConfig(device='j', disk=3, buffer_size=8000, threads=5)
-# config = PlotConfig(device='mbp2', disk_id=2, buffer_size=8000, threads=3)
-
-# match sys.argv[1]:
-#     case 'case1':
-#         config = PlotConfig(device='mbp2', disk_id=1, buffer_size=8000, threads=3)
-#         p = Plot(config)
-#         # sleep(7 * 3600)
-#         p.start()
-#     case 'case2':
-#         config = PlotConfig(device='mbp2', disk_id=2, buffer_size=8000, threads=3)
-#         p = Plot(config)
-#         p.start()
-#         # sleep(5 * 3600)
-#     case 'case3':
-#         config = PlotConfig(device='j', disk_id=3, buffer_size=8000, threads=6)
-#         p = Plot(config)
-#         sleep(6 * 3600)
-#         p.start()
-#     case 'case-test':
-#         config = PlotConfig(device='mbp2', disk_id=3, buffer_size=8000, threads=6)
-#         p = Plot(config)
-#         print(p.command_to_watch)
-
-#     case _:
-#         print('Unknown case')
-#         exit(1)
+# manager.print_logs()

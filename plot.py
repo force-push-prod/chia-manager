@@ -108,25 +108,11 @@ class PlotProgress():
         if len(self.last_3_lines) > 3: self.last_3_lines.pop(0)
 
         match line:
-            # case [timestamp, 'chia.plotting.create_plots', ':', 'INFO', 'Creating', plot_total_count, 'plots', *_]:
-            #     self.info.start_time = datetime.datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S.%f')
-            #     self.info.plot_total_count = int(plot_total_count)
-
-            # Starting plotting progress into temporary dirs
-            case ['Starting', 'plotting', *_, 'dirs:', dir_tmp1, 'and', dir_tmp2]:
+            case ['Starting', 'plotting', *_, 'dirs:', _, 'and', _]:
                 if self.current_stage != 0:
-                    # raise NextPlotException()
                     raise Exception('NextPlot')
-                # self.info.dir_tmp1 = dir_tmp1
-                # self.info.dir_tmp2 = dir_tmp2
 
             case ['ID:', x]: self.plot_id = x
-            # case ['Plot', 'size', 'is:', x]:    self.info.plot_size = int(x)
-            # case ['Buffer', 'size', 'is:', x]:  self.info.config_buffer_size = x
-            # case ['Using', x, 'buckets']:       self.info.config_buckets = int(x)
-            # case ['Using', x, 'threads', *_, 'size', y]:
-            #     self.info.config_threads = int(x)
-            #     self.info.config_threads_stripe_size = int(y)
 
             case ['Starting', 'phase', phase, *_]:
                 start_time = line_timestamp
@@ -172,7 +158,6 @@ class PlotProgress():
 
 
 
-
 class Plot():
     def __init__(self, log_file_name=None):
         if log_file_name is not None:
@@ -199,48 +184,3 @@ class Plot():
             signals.append(StageUpdateSignal(before=new_progress.current_stage, after=new_progress.current_stage))
 
         return signals
-
-    # def start(self):
-    #     command = None
-    #     if self.config.is_ssh:
-    #         command = ["ssh", self.config.device, self.config.command_to_start]
-    #     else:
-    #         command = self.config.command_to_start.split()
-    #     self.plot_process = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    #     if self.plot_process.returncode != 0:
-    #         print('*' * 40)
-    #         print(self.plot_process.stderr)
-    #         print('*' * 40)
-    #         return
-    #     self.process_id = int(self.plot_process.stdout.strip()) + 1
-
-    #     print('Started plotting process. pid=' + str(self.process_id))
-    #     print('Start watching the log with:\n')
-    #     print(self.command_to_watch)
-
-
-    # def update_progress(self):
-    #     pass
-
-    # def get_plot_logs(self):
-    #     """Returns text of the logs from remote machine"""
-    #     command = []
-    #     if self.config.is_ssh:
-    #         command.extend(['ssh', self.config.device])
-    #     command.extend(['cat', self.config.log_path])
-    #     log_process = subprocess.run(command, text=True, stdout=subprocess.PIPE)
-    #     return log_process.stdout
-
-    # @property
-    # def command_to_watch(self):
-    #     command = []
-    #     if self.config.is_ssh:
-    #         command.extend(['ssh', self.config.device])
-    #     command.extend(['cat', self.config.log_path or '???'])
-
-    #     return 'watch -n 180 "' + ' '.join(command) + ' | python ~/Developer/chia-manager/main.py"'
-
-
-
-
-
