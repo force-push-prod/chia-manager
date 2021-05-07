@@ -22,7 +22,7 @@ def get_plots_from_disks(disks):
             match plot_file_name.split('-'):
                 case ['plot', 'k32', year, month, day, hour, minute, plot_id]:
                     plot_id = plot_id.replace('.plot', '')
-                case [_]:
+                case [*_]:
                     raise Exception(f'Unmatched plot_file_name: {plot_file_name} {NL}')
 
             plots[plot_id] = {
