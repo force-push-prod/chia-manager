@@ -30,7 +30,7 @@ class PlotDevice():
         if self.ssh_name:
             local_command = ['ssh', self.ssh_name, *local_command]
 
-        logger_device.debug('Execute no wait on %s: %s', self, local_command)
+        logger_device.debug('Execute no wait on %s: \'%s\'', self, local_command)
         process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return process.stderr, process.stdout
 
@@ -52,7 +52,7 @@ class PlotDevice():
         if self.ssh_name:
             local_command = SP.join(['ssh', self.ssh_name, local_command])
 
-        logger_device.debug('Execute shell on %s: %s', self, local_command)
+        logger_device.debug('Execute shell on %s: \'%s\'', self, local_command)
         process = subprocess.run(local_command, text=True, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return process.stderr, process.stdout
 
