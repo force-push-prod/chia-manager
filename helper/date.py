@@ -15,8 +15,13 @@ def now_tz_str():
 def now_no_tz_str():
     return now_no_tz().isoformat()
 
-def now_epoch_seconds():
-    return round(datetime.datetime.now().timestamp())
+# def now_epoch_seconds():
+#     return round(datetime.datetime.now().timestamp())
+
+def unique_file_name():
+    s = hex(int(datetime.datetime.now().timestamp() * 10000)).replace('0x', '0')
+    return s[:4] + '-' + s[4:8] + '-' + s[8:]
+
 
 def parse_iso(s: str):
     try:

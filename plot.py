@@ -2,26 +2,25 @@ import subprocess
 
 from helper import *
 import base64
+import logging
 
 def encode(s):
     return base64.b32encode(s.encode()).decode()
 
+logger_device = logging.getLogger('device')
+
+@dataclass(frozen=True)
 class PlotDevice():
-    def __init__(self, *, ssh_name, log_dir_path, disk_dir_path, chia_path, python_path, bootstrap_path):
-        self.ssh_name = ssh_name
-        self.log_dir_path = log_dir_path
-        self.disk_dir_path = disk_dir_path
-        self.chia_path = chia_path
-        self.python_path = python_path
-        self.bootstrap_path = bootstrap_path
-        self.disks: list[PlotDisk] = []
+    human_friendly_name: str
+    ssh_name: str
+    log_dir_path: str
+    disk_dir_path: str
+    chia_path: str
+    python_path: str
+    bootstrap_path: str
 
     def __repr__(self):
-        # TODO: hardcoded value
-        return 'Device(' + (self.ssh_name or 'mbp2') + ')'
-
-    def add_disk(self, disk):
-        self.disks.append(disk)
+        return '<Device' + self.human_friendly_name + '>'
 
     def execute_no_wait_command(self, log_file_name, remote_command):
         log_file_path = self.construct_log_file_path(log_file_name)
@@ -31,7 +30,7 @@ class PlotDevice():
         if self.ssh_name:
             local_command = ['ssh', self.ssh_name, *local_command]
 
-        print('EXECUTING no wait:', local_command)
+        logger_device.debug('Execute no wait on %s: %s', self, local_command)
         process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return process.stderr, process.stdout
 
@@ -42,7 +41,7 @@ class PlotDevice():
         if self.ssh_name:
             local_command = ['ssh', self.ssh_name, *local_command]
 
-        print('EXECUTING no shell:', local_command)
+        logger_device.debug('Execute and wait on %s: %s', self, local_command)
         process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return process.stderr, process.stdout
 
@@ -52,7 +51,7 @@ class PlotDevice():
         if self.ssh_name:
             local_command = SP.join(['ssh', self.ssh_name, local_command])
 
-        print('EXECUTING shell:', local_command)
+        logger_device.debug('Execute shell on %s: %s', self, local_command)
         process = subprocess.run(local_command, text=True, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return process.stderr, process.stdout
 
@@ -61,30 +60,21 @@ class PlotDevice():
         return self.log_dir_path + file_name
 
 
-@dataclass(init=True, repr=True, frozen=True)
+@dataclass(frozen=True)
 class PlotConfig():
     buffer: int = 0
     threads: int = 0
 
+    def __repr__(self):
+        return f"<PlotConfig buffer={self.buffer} threads={self.threads}>"
 
+
+@dataclass(frozen=True)
 class PlotDisk():
-    def __init__(self, disk_volume_name):
-        assert disk_volume_name in ['T7-1', 'T7-2', 'T7-3', 'ExFAT450']
-        self.disk_volume_name: str = disk_volume_name
-        self.plots: list[Plot] = []
+    disk_volume_name: str
 
     def __repr__(self):
-        return f'Disk({self.disk_volume_name})'
-
-    def add_plot(self, plot):
-        self.plots.append(plot)
-
-    @property
-    def is_idle(self):
-        for plot in self.plots:
-            if plot.current_stage != 5 and plot.current_stage != 0:
-                return False
-        return True
+        return f'<Disk {self.disk_volume_name}>'
 
 
 class PlotProgress():
@@ -108,7 +98,7 @@ class PlotProgress():
             id_str = shorten_plot_id(self.plot_id)
         else:
             id_str = 'None'
-        return f'Progress({id_str}, stage={self.current_stage}, table={self.current_table}, bucket={self.current_bucket})'
+        return f'<Progress {id_str} stage={self.current_stage}, table={self.current_table}, bucket={self.current_bucket}>'
 
     @property
     def current_stage(self):
@@ -184,29 +174,153 @@ class PlotProgress():
 
 
 
-class Plot():
-    def __init__(self, log_file_name=None):
+logger_process = logging.getLogger('process')
+
+class Process():
+    def __init__(self, device: PlotDevice, log_file_name=None):
+        self._device = device
         if log_file_name is not None:
-            self.log_file_name = log_file_name.replace('.log', '') + '.log'  # Handles cases with and without '.log'
+            self._log_file_name = log_file_name.replace('.log', '') + '.log'  # Handles cases with and without '.log'
         else:
-            self.log_file_name = hex(now_epoch_seconds()) + '.log'
-        self.progress = PlotProgress()
-        self.pid = 0
+            self._log_file_name = unique_file_name() + '.log'
+        self._output = ''
+        self._is_dead: bool = False
+        self._started: datetime.datetime = None
+        self._last_outputs_fetched: datetime.datetime = None
+        self._last_outputs_changed: datetime.datetime = None
+        self._last_alive_checked: datetime.datetime = None
+        self._pid: int = 0
 
     def __repr__(self):
-        return f'Plot({self.log_file_name}, {self.progress.__repr__()})'
+        match [self._pid, self._is_dead]:
+            case [0, _]:
+                s = 'NOT STARTED'
+            case [_, True]:
+                s = 'DEAD'
+            case [_, False]:
+                s = 'RUNNING'
+            case _:
+                assert False
+
+        if self._last_alive_checked is not None:
+            t = format_time(self._last_alive_checked)
+        else:
+            t = 'never'
+        return f'<{self.__class__.__name__} on {self._device.human_friendly_name} pid={self._pid} {s} @ {t}>'
 
     @property
-    def current_stage(self):
-        return self.progress.current_stage
+    def output_cached(self):
+        return self._output
 
-    def set_new_progress_get_signals(self, new_progress: PlotProgress):
-        old_progress = self.progress
-        self.progress = new_progress
+    @property
+    def is_running_cached(self):
+        return self._pid and not self._is_dead
 
-        signals = []
-        if old_progress.current_stage != new_progress.current_stage:
-            # assert new_progress.current_stage - old_progress.current_stage == 1
-            signals.append(StageUpdateSignal(before=old_progress.current_stage, after=new_progress.current_stage))
+    def fetch_updates(self):
+        self.update_output()
+        self.check_alive()
 
-        return signals
+    def start(self, command):
+        if self._is_dead or self._pid != 0:
+            logger_process.error('Cannot start an active or dead process')
+            return
+
+        stderr, stdout = self._device.execute_no_wait_command(self._log_file_name, command)
+        if stderr != '':
+            logger_process.error('Expect stderr to be empty, got: %s', stderr)
+        try:
+            pid = int(stdout)
+        except Exception as e:
+            pid = 0
+            logger_process.error('Cannot convert stdout to int; got error %s', e)
+            logger_process.error('stdout is %s', stdout)
+
+        self._started = now_tz()
+        self._pid = pid
+
+    def update_output(self):
+        stderr, stdout = self._device.execute_and_wait_command(['cat', self._device.construct_log_file_path(self._log_file_name)])
+        if stderr != '':
+            logger_process.error('Expect stderr to be empty, got: %s', stderr)
+
+        if self._output != stdout:
+            self._last_outputs_changed = now_tz()
+
+        self._output = stdout
+        self._last_outputs_fetched = now_tz()
+
+
+    def check_alive(self):
+        if self._pid == 0:
+            logger_process.debug('Not checking for pid = 0')
+            return
+
+        if self._is_dead:
+            logger_process.debug('Not checking alive for dead process')
+            return
+
+        stderr, stdout = self._device.execute_and_wait_command(['ps', str(self._pid)])
+        if stderr != '':
+            logger_process.error('Expect stderr to be empty, got: %s', stderr)
+            return
+
+        match stdout.strip().split():
+            case ['PID', 'TT', 'STAT', 'TIME', 'COMMAND', pid, tt, stat, time, *commands]:
+                self._is_dead = False
+                self._last_alive_checked = now_tz()
+
+            case ['PID', 'TT', 'STAT', 'TIME', 'COMMAND']:
+                self._is_dead = True
+                self._last_alive_checked = now_tz()
+
+            case [_]:
+                logger_process.error('Unexpected stdout match: %s', stdout)
+
+
+
+class PlotProcess(Process):
+    def __init__(self, device: PlotDevice, disk: PlotDisk, config: PlotConfig, log_file_name=None):
+        super().__init__(device=device, log_file_name=log_file_name)
+        self._device = device
+        self._disk = disk
+        self._config = config
+        self.progress = PlotProgress()
+
+    def __repr__(self):
+        return super().__repr__().replace('>', f' {self.progress} >')
+
+    def fetch_updates(self):
+        super().fetch_updates()
+        self.progress = PlotProgress(self.output_cached)
+
+    def start(self):
+        device = self._device
+        disk = self._disk
+        config = self._config
+
+        disk_path = device.disk_dir_path + disk.disk_volume_name
+
+        command = f"""
+
+            {device.chia_path} plots create
+                -n 1 -b {config.buffer} -r {config.threads}
+                -t {disk_path} -2 {disk_path} -d {disk_path}
+                2>&1 | ts %Y-%m-%dT%H:%M:%S%z
+
+        """.replace('\n', '').strip()
+
+        super().start(command)
+
+
+class MoveFileToChiaOverSSHProcess(Process):
+    def __init__(self, device: PlotDevice, file_path: str, log_file_name=None):
+        super().__init__(device=device, log_file_name=log_file_name)
+        self._file_path = file_path
+
+    def start(self):
+        file_path = self._file_path
+
+        command = f"""scp {file_path} r1:/share/Chia01/ && rm {file_path}"""
+
+        super().start(command)
+
