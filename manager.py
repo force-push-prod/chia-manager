@@ -5,50 +5,63 @@ from helper import *
 from time import sleep
 import logging
 
-logging.getLogger().setLevel(logging.DEBUG)
+
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                    filename='manager.log',
+                    filemode='w')
+
+console = logging.StreamHandler()
+console.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+console.setFormatter(formatter)
+logging.getLogger('').addHandler(console)
+
 
 logger_manager = logging.getLogger('manager')
+
 
 class Manager():
     def __init__(self, structure):
         self.structure: Dict[PlotDevice, list[PlotDisk]] = structure
-        self.dead_processes: list[Process]
-        self.running_processes: list[Process]
+        self.dead_processes: list[Process] = []
+        self.running_processes: list[Process] = []
 
 
     def update_processes(self):
         for process in self.running_processes:
             process.fetch_updates()
 
-        deads = filter(lambda x: not x.is_running_cached, self.running_processes)
+        deads = list(filter(lambda x: not x.is_running_cached, self.running_processes))
 
         if len(deads) > 0:
-            still_running = filter(lambda x: x.is_running_cached, self.running_processes)
+            still_running = list(filter(lambda x: x.is_running_cached, self.running_processes))
             self.running_processes = still_running
             self.dead_processes.extend(deads)
             for dead in deads:
-                logging.info('Process just died: %s', dead)
+                logger_manager.info('Process just died: %s', dead)
 
 
     def perform_actions(self):
         for device, disks in self.structure.items():
             for disk in disks:
-                if any(map(lambda x: isinstance(x, MoveFileToChiaOverSSHProcess), self.running_processes)):
-                    logging.debug('Skip checking for finished plots on %s %s', device, disk)
+                if any(list(map(lambda x: isinstance(x, MoveFileToChiaOverSSHProcess), self.running_processes))):
+                    logger_manager.debug('Skip checking for finished plots on %s %s', device, disk)
                 else:
+                    logger_manager.debug('Checking for finished plots on %s %s', device, disk)
                     finished_plots = get_finished_plot_file_paths(device, disk)
                     if len(finished_plots) > 0:
-                        p = MoveFileToChiaOverSSHProcess(device, disk)
+                        p = MoveFileToChiaOverSSHProcess(device, finished_plots[0])
                         p.start()
                         self.running_processes.append(p)
 
-                plotting_processes = filter(
+                plotting_processes = list(filter(
                     lambda x: isinstance(x, PlotProcess) and x._device == device and x._disk == disk,
                     self.running_processes
-                )
+                ))
 
                 if len(plotting_processes) == 0:
-                    logging.info('%s %s is idle, starting a new plot')
+                    logger_manager.info('%s %s is idle, starting a new plot', device, disk)
 
                     # TODO: get config
                     if device == mbp2:
@@ -61,26 +74,38 @@ class Manager():
                     self.running_processes.append(p)
 
 
+    def print_processes(self):
+        logger_manager.debug('--------- PROCESSES ----------')
+
+        for device, _ in self.structure.items():
+            logger_manager.debug('\tDevice %s', device)
+
+            logger_manager.debug('\t\tDead')
+            for x in self.dead_processes:
+                if x._device == device:
+                    logger_manager.debug('\t\t\t%s', x)
+
+            logger_manager.debug('\t\tRunning')
+            for x in self.running_processes:
+                if x._device == device:
+                    logger_manager.debug('\t\t\t%s', x)
+
+        logger_manager.debug('-' * 30)
+
+
     def main_loop(self):
         while True:
             self.update_processes()
             self.perform_actions()
 
-            logger_manager.debug('PROCESSES')
-            for device, _ in self.structure.items():
-                logger_manager.debug('\tDevice %s', device)
-
-                logger_manager.debug('\t\tDead')
-                for x in self.dead_processes:
-                    if x._device == device:
-                        logger_manager.debug('\t\t\t%s', x)
-
-                logger_manager.debug('\t\tRunning')
-                for x in self.running_processes:
-                    if x._device == device:
-                        logger_manager.debug('\t\t\t%s', x)
-
+            self.print_processes()
             sleep(5 * 60)
+
+
+    def discover_chia_process(self):
+        for device in self.structure.keys():
+            processes = discover_chia_process(device)
+            self.running_processes.extend(processes)
 
 
 def get_finished_plot_file_paths(device: PlotDevice, disk: PlotDisk):
@@ -94,6 +119,30 @@ def get_finished_plot_file_paths(device: PlotDevice, disk: PlotDisk):
         logger_manager.warning('Do not expect this case. stderr: %s, stdout: %s', stderr, stdout)
         return []
 
+
+def discover_chia_process(device: PlotDevice):
+    stderr, stdout = device.execute_and_wait_command_shell('pgrep chia')
+    if stderr != '':
+        logger_manager.critical('Expect stderr to be empty, got: %s', stderr)
+
+    try:
+        pids = list(map(int, stdout.strip().split('\n')))
+    except Exception as e:
+        logger_manager.exception(e)
+        return
+
+    processes = []
+    DummyDisk = PlotDisk('dummy')
+    DummyConfig = PlotConfig(-1, -1)
+    for pid in pids:
+        p = PlotProcess(device, DummyDisk, DummyConfig)
+        p._pid = pid
+        print(f'We found chia process with pid = {pid}')
+        p._log_file_name = input('log file name? ')
+        p._disk = PlotDisk(input('for volume name? '))
+        processes.append(p)
+
+    return processes
 
 
 
@@ -142,7 +191,6 @@ structure = {
     j: [disk3]
 }
 
-m = Manager()
-m.structure = structure
+m = Manager(structure)
 
 logging.shutdown()

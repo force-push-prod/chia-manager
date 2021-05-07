@@ -43,11 +43,11 @@ def parse_rfc(s):
 
 
 def format_time(d: datetime):
-    return str(d).replace('2021-', '') + ' ' + relative_format(d)
+    return '(' + format(d, '%Y-%m-%d %H:%M:%S') + ' ' + relative_format(d) + ')'
 
 def format_time_safe(d):
     try:
-        format_time(d)
+        return format_time(d)
     except:
         return 'NA'
 

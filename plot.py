@@ -20,7 +20,7 @@ class PlotDevice():
     bootstrap_path: str
 
     def __repr__(self):
-        return '<Device' + self.human_friendly_name + '>'
+        return f'<Device {self.human_friendly_name}>'
 
     def execute_no_wait_command(self, log_file_name, remote_command):
         log_file_path = self.construct_log_file_path(log_file_name)
@@ -177,6 +177,7 @@ class PlotProgress():
 
 logger_process = logging.getLogger('process')
 
+
 class Process():
     def __init__(self, device: PlotDevice, log_file_name=None):
         self._device = device
@@ -227,13 +228,13 @@ class Process():
 
         stderr, stdout = self._device.execute_no_wait_command(self._log_file_name, command)
         if stderr != '':
-            logger_process.error('Expect stderr to be empty, got: %s', stderr)
+            logger_process.critical('Expect stderr to be empty, got: %s', stderr)
         try:
             pid = int(stdout)
         except Exception as e:
             pid = 0
-            logger_process.error('Cannot convert stdout to int; got error %s', e)
-            logger_process.error('stdout is %s', stdout)
+            logger_process.critical('Cannot convert stdout to int; got error %s', e)
+            logger_process.critical('stdout is %s', stdout)
 
         self._started_on = now_tz()
         self._pid = pid
@@ -241,7 +242,7 @@ class Process():
     def update_output(self):
         stderr, stdout = self._device.execute_and_wait_command(['cat', self._device.construct_log_file_path(self._log_file_name)])
         if stderr != '':
-            logger_process.error('Expect stderr to be empty, got: %s', stderr)
+            logger_process.critical('Expect stderr to be empty, got: %s', stderr)
 
         if self._output != stdout:
             self._last_outputs_changed = now_tz()
@@ -252,7 +253,7 @@ class Process():
 
     def check_alive(self):
         if self._pid == 0:
-            logger_process.debug('Not checking for pid = 0')
+            logger_process.debug('Not checking alive for pid = 0')
             return
 
         if self._is_dead:
@@ -261,7 +262,7 @@ class Process():
 
         stderr, stdout = self._device.execute_and_wait_command(['ps', str(self._pid)])
         if stderr != '':
-            logger_process.error('Expect stderr to be empty, got: %s', stderr)
+            logger_process.critical('Expect stderr to be empty, got: %s', stderr)
             return
 
         match stdout.strip().split():
@@ -274,24 +275,23 @@ class Process():
                 self._last_alive_checked = now_tz()
 
             case [_]:
-                logger_process.error('Unexpected stdout match: %s', stdout)
+                logger_process.critical('Unexpected stdout match: %s', stdout)
 
 
 
 class PlotProcess(Process):
     def __init__(self, device: PlotDevice, disk: PlotDisk, config: PlotConfig, log_file_name=None):
         super().__init__(device=device, log_file_name=log_file_name)
-        self._device = device
         self._disk = disk
         self._config = config
         self.progress = PlotProgress()
 
     def __repr__(self):
-        return super().__repr__().replace('>', f' {self.progress} >')
+        return super().__repr__().replace('>', f' disk={self._disk} config={self._config} {self.progress} >')
 
     def fetch_updates(self):
         super().fetch_updates()
-        self.progress = PlotProgress(self.output_cached)
+        self.progress = PlotProgress(self.output_cached.split('\n'))
 
     def start(self):
         device = self._device
@@ -316,6 +316,11 @@ class MoveFileToChiaOverSSHProcess(Process):
     def __init__(self, device: PlotDevice, file_path: str, log_file_name=None):
         super().__init__(device=device, log_file_name=log_file_name)
         self._file_path = file_path
+
+    def fetch_updates(self):
+        super().fetch_updates()
+        if len(self.output_cached) > 0:
+            logger_process.critical('Move had an abnormal output: %s', self.output_cached)
 
     def start(self):
         file_path = self._file_path
