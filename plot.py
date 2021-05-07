@@ -267,7 +267,6 @@ class Process():
 
         match stdout.strip().split():
             case ['PID', _, 'STAT', 'TIME', 'COMMAND', pid, tt, stat, time, *commands]:
-                logging.debug([stdout.strip().split(), pid, tt])
                 self._is_dead = False
                 self._last_alive_checked = now_tz()
 
