@@ -43,7 +43,13 @@ def parse_rfc(s):
 
 
 def format_time(d: datetime):
-    return str(d).replace('2021-', '') + '  ' + relative_format(d)
+    return str(d).replace('2021-', '') + ' ' + relative_format(d)
+
+def format_time_safe(d):
+    try:
+        format_time(d)
+    except:
+        return 'NA'
 
 def format_seconds(s: float | int):
     s = int(s)

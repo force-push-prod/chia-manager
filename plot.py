@@ -45,6 +45,7 @@ class PlotDevice():
         process = subprocess.run(local_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return process.stderr, process.stdout
 
+
     def execute_and_wait_command_shell(self, shell_command):
         local_command = shell_command
 
@@ -185,7 +186,7 @@ class Process():
             self._log_file_name = unique_file_name() + '.log'
         self._output = ''
         self._is_dead: bool = False
-        self._started: datetime.datetime = None
+        self._started_on: datetime.datetime = None
         self._last_outputs_fetched: datetime.datetime = None
         self._last_outputs_changed: datetime.datetime = None
         self._last_alive_checked: datetime.datetime = None
@@ -202,11 +203,10 @@ class Process():
             case _:
                 assert False
 
-        if self._last_alive_checked is not None:
-            t = format_time(self._last_alive_checked)
-        else:
-            t = 'never'
-        return f'<{self.__class__.__name__} on {self._device.human_friendly_name} pid={self._pid} {s} @ {t}>'
+        t1 = format_time_safe(self._started_on)
+        t2 = format_time_safe(self._last_alive_checked)
+        t3 = format_time_safe(self._last_outputs_changed)
+        return f'<{self.__class__.__name__} on {self._device.human_friendly_name} {s} pid={self._pid} started={t1} checked={t2} changed={t3}>'
 
     @property
     def output_cached(self):
@@ -235,7 +235,7 @@ class Process():
             logger_process.error('Cannot convert stdout to int; got error %s', e)
             logger_process.error('stdout is %s', stdout)
 
-        self._started = now_tz()
+        self._started_on = now_tz()
         self._pid = pid
 
     def update_output(self):

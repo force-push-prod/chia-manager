@@ -1,124 +1,99 @@
+from typing import Dict
 from plot import *
 
 from helper import *
-# import time
+from time import sleep
+import logging
 
-# class Manager():
-#     def __init__(self):
-#         self.devices: list[PlotDevice] = []
+logging.getLogger().setLevel(logging.DEBUG)
 
-#     def update_states(self):
-#         # new_signals = []
-#         for device in self.devices:
-#             for disk in device.disks:
-#                 for plot in disk.plots:
-#                     self.debug(f'update_states: Checking {device} {disk} {plot}')
-#                     new_progress = self.fetch_progress(device, plot)
-#                     signals = plot.set_new_progress_get_signals(new_progress)
-#                     for signal in signals:
-#                         self.info2('update_states: Got signal', signal)
+logger_manager = logging.getLogger('manager')
 
-#     def perform_actions(self):
-#         for device in self.devices:
-#             for disk in device.disks:
-#                 self.debug('disk.is_idle: Checking if', disk, 'is idle')
-#                 if disk.is_idle:
-#                     new_plot = Plot()
-#                     disk.add_plot(new_plot)
-#                     # TODO: correlate device with config
-#                     if device == mbp2: config = mbp2_config
-#                     else: config = j_config
-#                     self.start_plot(device, disk, config, new_plot)
-
-#                 # if disk.has_finished_plots:
-#                 #     pass
-
-#                 if self.move_file_timeout <= 0:
-#                     file_names = self.get_finished_plot_file_paths(device, disk)
-#                     for a in file_names:
-#                         self.move_file(a, device, disk)
-#                 else:
-#                     self.debug('move_file_timeout: skip check finished file; timeout', self.move_file_timeout)
-
-#     def main_loop(self):
-#         while True:
-#             self.debug('============= update_state =============')
-#             self.update_states()
-#             self.debug('============= perform_actions =============')
-#             self.perform_actions()
-
-#             if self.move_file_timeout > 0:
-#                 self.move_file_timeout -= 1
-
-#             time.sleep(60 * 5)
-#         # self.process_signals(new_signals)
-
-#     # def process_signals(self):
-#     #     for signal in self.signals:
-#     #         signal
-
-#     def get_finished_plot_file_paths(self, device: PlotDevice, disk: PlotDisk):
-#         command = f'ls -1 {device.disk_dir_path}{disk.disk_volume_name}/*.plot'
-#         stderr, stdout = device.execute_and_wait_command_shell(command)
-#         if stderr != '' and stdout == '':
-#             return []
-#         elif stderr == '' and stdout != '':
-#             return stdout.strip().split('\n')
-#         else:
-#             self.warning('Do not expect this case: stderr -->', stderr, 'stdout -->', stdout)
-#             return []
+class Manager():
+    def __init__(self, structure):
+        self.structure: Dict[PlotDevice, list[PlotDisk]] = structure
+        self.dead_processes: list[Process]
+        self.running_processes: list[Process]
 
 
-#     def move_file(self, file_path, device: PlotDevice, disk: PlotDisk):
-#         self.info(f'Moving {file_path} on {device} {disk}')
-#         if 'plot' not in file_path:
-#             self.warning('ERROR unexpected file_path', file_path)
-#             return
+    def update_processes(self):
+        for process in self.running_processes:
+            process.fetch_updates()
 
-#         if device == mbp2:
-#             command = f'scp {file_path} admin@192.168.0.11:/share/Chia01/ && rm {file_path}'
-#         else:
-#             command = f'scp {file_path} admin@192.168.0.11:/share/Chia01/ && rm {file_path}'
+        deads = filter(lambda x: not x.is_running_cached, self.running_processes)
 
-#         stderr, stdout = device.execute_no_wait_command('move', command)
-#         self.debug('stderr -->', stderr, 'stdout -->', stdout)
-#         self.move_file_timeout = 18 # NOTE: 18 * 5 mins = 1.5 h
+        if len(deads) > 0:
+            still_running = filter(lambda x: x.is_running_cached, self.running_processes)
+            self.running_processes = still_running
+            self.dead_processes.extend(deads)
+            for dead in deads:
+                logging.info('Process just died: %s', dead)
 
 
-#     def fetch_progress(self, device: PlotDevice, plot: Plot):
-#         log_file_path = device.construct_log_file_path(plot.log_file_name)
+    def perform_actions(self):
+        for device, disks in self.structure.items():
+            for disk in disks:
+                if any(map(lambda x: isinstance(x, MoveFileToChiaOverSSHProcess), self.running_processes)):
+                    logging.debug('Skip checking for finished plots on %s %s', device, disk)
+                else:
+                    finished_plots = get_finished_plot_file_paths(device, disk)
+                    if len(finished_plots) > 0:
+                        p = MoveFileToChiaOverSSHProcess(device, disk)
+                        p.start()
+                        self.running_processes.append(p)
 
-#         command = ['cat', log_file_path]
-#         stderr, stdout = device.execute_and_wait_command(command)
-#         lines = stdout.split('\n')
-#         self.debug(f'fetch_progress: Got log file with stdout len={len(stdout)} line={len(lines)}', 'starting with ', stdout[:50])
-#         if stderr:
-#             self.warning(f'stderr is not empty:', stderr)
-#         return PlotProgress(lines)
+                plotting_processes = filter(
+                    lambda x: isinstance(x, PlotProcess) and x._device == device and x._disk == disk,
+                    self.running_processes
+                )
+
+                if len(plotting_processes) == 0:
+                    logging.info('%s %s is idle, starting a new plot')
+
+                    # TODO: get config
+                    if device == mbp2:
+                        config = mbp2_config
+                    else:
+                        config = j_config
+                    p = PlotProcess(device, disk, config)
+                    p.start()
+
+                    self.running_processes.append(p)
 
 
-#     def start_plot(self, device: PlotDevice, disk: PlotDisk, config: PlotConfig, plot: Plot):
-#         self.info(f'Starting a new plot on {device} {disk} with {config}')
-#         disk_path = device.disk_dir_path + disk.disk_volume_name
-#         command = f"""
-#         {device.chia_path} plots create
-#             -n 1 -b {config.buffer} -r {config.threads}
-#             -t {disk_path} -2 {disk_path} -d {disk_path}
-#             2>&1 | ts %Y-%m-%dT%H:%M:%S%z
-#         """.replace('\n', '').strip()
+    def main_loop(self):
+        while True:
+            self.update_processes()
+            self.perform_actions()
 
-#         stderr, stdout = device.execute_no_wait_command(plot.log_file_name, command)
+            logger_manager.debug('PROCESSES')
+            for device, _ in self.structure.items():
+                logger_manager.debug('\tDevice %s', device)
 
-#         if stderr != '':
-#             self.warning('Got non empty stderr', stderr)
-#         try:
-#             pid = int(stdout) + 1
-#             plot.pid = pid
-#         except Exception as e:
-#             pid = 0
-#             self.warning('Cannot convert stdout to int; it should be pid:', e, stdout)
+                logger_manager.debug('\t\tDead')
+                for x in self.dead_processes:
+                    if x._device == device:
+                        logger_manager.debug('\t\t\t%s', x)
 
-#         self.debug('Plotting started with pid', pid)
+                logger_manager.debug('\t\tRunning')
+                for x in self.running_processes:
+                    if x._device == device:
+                        logger_manager.debug('\t\t\t%s', x)
+
+            sleep(5 * 60)
+
+
+def get_finished_plot_file_paths(device: PlotDevice, disk: PlotDisk):
+    command = f'ls -1 {device.disk_dir_path}{disk.disk_volume_name}/*.plot'
+    stderr, stdout = device.execute_and_wait_command_shell(command)
+    if stderr != '' and stdout == '':
+        return []
+    elif stderr == '' and stdout != '':
+        return stdout.strip().split('\n')
+    else:
+        logger_manager.warning('Do not expect this case. stderr: %s, stdout: %s', stderr, stdout)
+        return []
+
 
 
 
@@ -158,25 +133,16 @@ disk2 = PlotDisk(disk_volume_name='T7-2')
 disk3 = PlotDisk(disk_volume_name='T7-3')
 disk4 = PlotDisk(disk_volume_name='ExFAT450')
 
-# disk1.add_plot(Plot('0x60934159.log'))
-# disk2.add_plot(Plot('0x60936278.log'))
-# disk3.add_plot(Plot('0x609360a9.log'))
-
-# mbp2.add_disk(disk1)
-# mbp2.add_disk(disk2)
-# j.add_disk(disk3)
-# mbp.add_disk(4, disk4)
 
 mbp2_config = PlotConfig(buffer=8000, threads=3)
 j_config = PlotConfig(buffer=8000, threads=6)
 
-# m = Manager()
+structure = {
+    mbp2: [disk1, disk2],
+    j: [disk3]
+}
 
-# m.devices = [mbp2, j]
+m = Manager()
+m.structure = structure
 
-# print(m.fetch_progress(j, ))
-# new_plot = Plot()
-# m.start_plot(mbp2, disk2, config, new_plot)
-# print(new_plot)
-
-# m.print_logs()
+logging.shutdown()
