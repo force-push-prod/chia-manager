@@ -266,15 +266,16 @@ class Process():
             return
 
         match stdout.strip().split():
-            case ['PID', 'TT', 'STAT', 'TIME', 'COMMAND', pid, tt, stat, time, *commands]:
+            case ['PID', _, 'STAT', 'TIME', 'COMMAND', pid, tt, stat, time, *commands]:
+                logging.debug([stdout.strip().split(), pid, tt])
                 self._is_dead = False
                 self._last_alive_checked = now_tz()
 
-            case ['PID', 'TT', 'STAT', 'TIME', 'COMMAND']:
+            case ['PID', _, 'STAT', 'TIME', 'COMMAND']:
                 self._is_dead = True
                 self._last_alive_checked = now_tz()
 
-            case [_]:
+            case [*_]:
                 logger_process.critical('Unexpected stdout match: %s', stdout)
 
 

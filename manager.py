@@ -193,4 +193,15 @@ structure = {
 
 m = Manager(structure)
 
-logging.shutdown()
+
+
+import pickle
+def save():
+    logging.shutdown()
+    with open('manager.pickle', 'wb') as p:
+        pickle.dump(m, p)
+
+def load():
+    global m
+    with open('manager.pickle', 'rb') as p:
+        m = pickle.load(p)
