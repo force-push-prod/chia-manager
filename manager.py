@@ -78,17 +78,17 @@ class Manager():
         logger_manager.debug('--------- PROCESSES ----------')
 
         for device, _ in self.structure.items():
-            logger_manager.debug('\tDevice %s', device)
+            logger_manager.debug('Device %s', device)
+            logger_manager.debug('Dead')
 
-            logger_manager.debug('\t\tDead')
             for x in self.dead_processes:
                 if x._device == device:
-                    logger_manager.debug('\t\t\t%s', x)
+                    logger_manager.debug('  %s', x)
 
-            logger_manager.debug('\t\tRunning')
+            logger_manager.debug('Running')
             for x in self.running_processes:
                 if x._device == device:
-                    logger_manager.debug('\t\t\t%s', x)
+                    logger_manager.debug('  %s', x)
 
         logger_manager.debug('-' * 30)
 
