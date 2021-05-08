@@ -49,7 +49,14 @@ class Manager():
     def perform_actions(self):
         for device, disks in self.structure.items():
             for disk in disks:
-                if any(list(map(lambda x: isinstance(x, MoveFileToChiaOverSSHProcess), self.running_processes))):
+                has_mv_process_on_same_device = False
+                for p in self.running_processes:
+                    if isinstance(p, MoveFileToChiaOverSSHProcess):
+                        if p._device == device:
+                            has_mv_process_on_same_device = True
+                            break
+
+                if has_mv_process_on_same_device:
                     logger_manager.debug('Skip checking for finished plots on %s %s', device, disk)
                 else:
                     logger_manager.debug('Checking for finished plots on %s %s', device, disk)
