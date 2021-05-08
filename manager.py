@@ -139,6 +139,7 @@ class Manager():
             self.fetch()
             self.perform_actions()
             self.print_processes()
+            auto_save()
             sleep(5 * 60)
 
 
@@ -251,3 +252,19 @@ def load():
     global m
     with open('manager.pickle', 'rb') as p:
         m = pickle.load(p)
+
+
+def auto_save():
+    global m
+    with open('manager-auto.pickle', 'wb') as p:
+        m = pickle.dump(m, p)
+    logging.debug('Saved to auto-save file')
+
+
+def auto_load():
+    global m
+    with open('manager-auto.pickle', 'rb') as p:
+        m = pickle.load(p)
+    logging.debug('Loaded from auto-save file')
+
+auto_load()
