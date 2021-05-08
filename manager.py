@@ -8,7 +8,7 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-                    filename='manager.log',
+                    filename=f'manager-{now_no_tz_str()}.log',
                     filemode='w')
 
 console = logging.StreamHandler()
@@ -27,10 +27,14 @@ class Manager():
         self.dead_processes: list[Process] = []
         self.running_processes: list[Process] = []
 
+        self.stop_stagger = False
+        self.stop_new_plot = False
+        self.stop_transfer = False
 
-    def update_processes(self):
+
+    def fetch(self):
         for process in self.running_processes:
-            process.fetch_updates()
+            process.fetch()
 
         deads = list(filter(lambda x: not x.is_running_cached, self.running_processes))
 
@@ -51,60 +55,90 @@ class Manager():
                     logger_manager.debug('Checking for finished plots on %s %s', device, disk)
                     finished_plots = get_finished_plot_file_paths(device, disk)
                     if len(finished_plots) > 0:
-                        p = MoveFileToChiaOverSSHProcess(device, finished_plots[0])
+                        if self.stop_transfer:
+                            logging.warning('Not moving finished plot due to flag control; on %s: %s', device, finished_plots[0])
+                        else:
+                            logging.info('Starting to move finished plot on %s: %s', device, finished_plots[0])
+                            p = MoveFileToChiaOverSSHProcess(device, finished_plots[0])
+                            p.start()
+                            self.running_processes.append(p)
+
+                plotting_processes: list[PlotProcess] = []
+                for p in self.running_processes:
+                    if isinstance(p, PlotProcess) and p._device == device and p._disk == disk:
+                        plotting_processes.append(p)
+
+                if len(plotting_processes) == 0:
+                    if self.stop_new_plot:
+                        logger_manager.warning('Not creating new plots due to flag control. %s %s is idle', device, disk)
+                    else:
+                        logger_manager.info('%s %s is idle, starting a new plot', device, disk)
+
+                        # TODO: get config
+                        if device == mbp2: config = mbp2_config
+                        else: config = j_config
+
+                        p = PlotProcess(device, disk, config)
                         p.start()
                         self.running_processes.append(p)
 
-                plotting_processes = list(filter(
-                    lambda x: isinstance(x, PlotProcess) and x._device == device and x._disk == disk,
-                    self.running_processes
-                ))
+                elif len(plotting_processes) == 1:
+                    progress = plotting_processes[0].progress
 
-                if len(plotting_processes) == 0:
-                    logger_manager.info('%s %s is idle, starting a new plot', device, disk)
-
-                    # TODO: get config
-                    if device == mbp2:
-                        config = mbp2_config
-                    else:
-                        config = j_config
-                    p = PlotProcess(device, disk, config)
-                    p.start()
-
-                    self.running_processes.append(p)
+                    if progress.current_stage == 3 and progress.current_table >= 4:
+                        if self.stop_stagger or self.stop_new_plot:
+                            logger_manager.warning('Not staggering due to flag control on %s %s', device, disk)
+                        else:
+                            logger_manager.info('Start staggering plot on %s %s', device, disk)
+                            # TODO: get config
+                            if device == mbp2:
+                                config = mbp2_config
+                            else:
+                                config = j_config
+                            p = PlotProcess(device, disk, config)
+                            p.start()
+                            self.running_processes.append(p)
 
 
     def print_processes(self):
         logger_manager.debug('--------- PROCESSES ----------')
 
         for device, _ in self.structure.items():
-            logger_manager.debug('Device %s', device)
-            logger_manager.debug('Dead')
+            logger_manager.debug('')
+            logger_manager.debug('Device %s dead processes', device)
+            logger_manager.debug('')
 
             for x in self.dead_processes:
                 if x._device == device:
                     logger_manager.debug('  %s', x)
+                    if isinstance(x, PlotProcess):
+                        logger_manager.debug('    %s', x.progress)
 
-            logger_manager.debug('Running')
+
+            logger_manager.debug('')
+            logger_manager.debug('Device %s running processes', device)
+            logger_manager.debug('')
+
             for x in self.running_processes:
                 if x._device == device:
                     logger_manager.debug('  %s', x)
+                    if isinstance(x, PlotProcess):
+                        logger_manager.debug('    %s', x.progress)
 
         logger_manager.debug('-' * 30)
 
 
     def main_loop(self):
         while True:
-            self.update_processes()
+            self.fetch()
             self.perform_actions()
-
             self.print_processes()
             sleep(5 * 60)
 
 
     def discover_chia_process(self):
         for device in self.structure.keys():
-            processes = discover_chia_process(device)
+            processes = discover_chia_process(device, self.running_processes)
             self.running_processes.extend(processes)
 
 
@@ -120,7 +154,7 @@ def get_finished_plot_file_paths(device: PlotDevice, disk: PlotDisk):
         return []
 
 
-def discover_chia_process(device: PlotDevice):
+def discover_chia_process(device: PlotDevice, existing_processes: list[Process]=[]):
     stderr, stdout = device.execute_and_wait_command_shell('pgrep chia')
     if stderr != '':
         logger_manager.critical('Expect stderr to be empty, got: %s', stderr)
@@ -135,10 +169,16 @@ def discover_chia_process(device: PlotDevice):
     DummyDisk = PlotDisk('dummy')
     DummyConfig = PlotConfig(-1, -1)
     for pid in pids:
+        print(f'We found chia process on {device} with pid = {pid}')
+        if pid in [p._pid for p in existing_processes]:
+            print('We already know about this process')
+            continue
         p = PlotProcess(device, DummyDisk, DummyConfig)
         p._pid = pid
-        print(f'We found chia process with pid = {pid}')
         p._log_file_name = input('log file name? ')
+        if p._log_file_name == '':
+            print('Ignored')
+            continue
         p._disk = PlotDisk(input('for volume name? '))
         processes.append(p)
 
@@ -155,7 +195,6 @@ mbp2 = PlotDevice(
     python_path='/Users/yyin/.pyenv/shims/python',
     bootstrap_path='/Users/yyin/Developer/chia-manager/bootstrap.py',
 )
-
 
 j = PlotDevice(
     human_friendly_name='j',
@@ -192,7 +231,6 @@ structure = {
 }
 
 m = Manager(structure)
-
 
 
 import pickle

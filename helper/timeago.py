@@ -37,7 +37,7 @@ LOCALE = [
 def timeago_template(index, ago_in):
     return LOCALE[index][ago_in]
 
-def relative_format(date, now=None):
+def format_time_relative(date, now=None):
     if not isinstance(date, timedelta):
         if now is None:
             now = datetime.now(tz=date.tzinfo)

@@ -1,5 +1,5 @@
 import datetime
-from .timeago import relative_format
+from .timeago import format_time_relative
 
 
 def now_tz():
@@ -41,9 +41,15 @@ def parse_rfc(s):
 
 ##########
 
+def format_time_relative_safe(d):
+    try:
+        return '(' + format_time_relative(d) + ')'
+    except:
+        return 'NA'
+
 
 def format_time(d: datetime):
-    return '(' + format(d, '%Y-%m-%d %H:%M:%S') + ' ' + relative_format(d) + ')'
+    return '(' + format(d, '%Y-%m-%d %H:%M:%S') + ' ' + format_time_relative(d) + ')'
 
 def format_time_safe(d):
     try:

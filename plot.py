@@ -1,3 +1,4 @@
+from main import MAX_TABLE
 import subprocess
 
 from helper import *
@@ -67,7 +68,7 @@ class PlotConfig():
     threads: int = 0
 
     def __repr__(self):
-        return f"<PlotConfig buffer={self.buffer} threads={self.threads}>"
+        return f"(buffer={self.buffer} threads={self.threads})"
 
 
 @dataclass(frozen=True)
@@ -99,7 +100,7 @@ class PlotProgress():
             id_str = shorten_plot_id(self.plot_id)
         else:
             id_str = 'None'
-        return f'<Progress {id_str} stage={self.current_stage}, table={self.current_table}, bucket={self.current_bucket}>'
+        return f'<Progress {id_str} alive={format_time_relative_safe(self.last_alive)} [ {self.current_stage} {self.current_stage_progress_str}>'
 
     @property
     def current_stage(self):
@@ -109,6 +110,22 @@ class PlotProgress():
         if self.total_time_seconds != 0.0:
             return 5
         return max([0, *self.stages_start_time.keys()])
+
+    @property
+    def current_stage_progress_str(self):
+        def o(a, b, c, d):
+            string = f'{a} / {b} of {c} / {d}'.replace(' of 1 / 1', '')
+            ratio = c / d + ((1 / d) * (a / b))
+            return string, ratio
+
+        match self.current_stage:
+            case 1: s, r = o(self.current_bucket, 128, self.current_table, MAX_TABLE)
+            case 2: s, r = o(self.current_bucket, 2, self.current_table, MAX_TABLE - 1)
+            case 3: s, r = o(self.current_bucket, 110, self.current_table / 2, MAX_TABLE)
+            case 4: s, r = o(self.current_bucket, 128, 0, 1)
+            case _: s, r = 'N/A', 0.0
+
+        return f'{round(r * 100)}% ] \'{s}\''
 
 
     def consume_line(self, line_raw: str):
@@ -185,12 +202,11 @@ class Process():
             self._log_file_name = log_file_name.replace('.log', '') + '.log'  # Handles cases with and without '.log'
         else:
             self._log_file_name = unique_file_name() + '.log'
-        self._output = ''
+        self._output = None
         self._is_dead: bool = False
         self._started_on: datetime.datetime = None
-        self._last_outputs_fetched: datetime.datetime = None
-        self._last_outputs_changed: datetime.datetime = None
-        self._last_alive_checked: datetime.datetime = None
+        self._last_fetched: datetime.datetime = None
+        self._last_output_changed: datetime.datetime = None
         self._pid: int = 0
 
     def __repr__(self):
@@ -204,9 +220,9 @@ class Process():
             case _:
                 assert False
 
-        t1 = format_time_safe(self._started_on)
-        t2 = format_time_safe(self._last_alive_checked)
-        t3 = format_time_safe(self._last_outputs_changed)
+        t1 = format_time_relative_safe(self._started_on)
+        t2 = format_time_relative_safe(self._last_fetched)
+        t3 = format_time_relative_safe(self._last_output_changed)
         return f'<{self.__class__.__name__} on {self._device.human_friendly_name} {s} pid={self._pid} started={t1} checked={t2} changed={t3}>'
 
     @property
@@ -217,13 +233,19 @@ class Process():
     def is_running_cached(self):
         return self._pid and not self._is_dead
 
-    def fetch_updates(self):
-        self.update_output()
-        self.check_alive()
+    def fetch(self):
+        self._update_output()
+        self._check_alive()
+        self._last_fetched = now_tz()
 
     def start(self, command):
         if self._is_dead or self._pid != 0:
             logger_process.error('Cannot start an active or dead process')
+            return
+
+        _do_not_run_command = False
+        if _do_not_run_command:
+            logger_process.critical('NOT ACTUALLY STARTING: %s', command)
             return
 
         stderr, stdout = self._device.execute_no_wait_command(self._log_file_name, command)
@@ -239,19 +261,19 @@ class Process():
         self._started_on = now_tz()
         self._pid = pid
 
-    def update_output(self):
+
+    def _update_output(self):
         stderr, stdout = self._device.execute_and_wait_command(['cat', self._device.construct_log_file_path(self._log_file_name)])
         if stderr != '':
             logger_process.critical('Expect stderr to be empty, got: %s', stderr)
 
         if self._output != stdout:
-            self._last_outputs_changed = now_tz()
+            self._last_output_changed = now_tz()
 
         self._output = stdout
-        self._last_outputs_fetched = now_tz()
 
 
-    def check_alive(self):
+    def _check_alive(self):
         if self._pid == 0:
             logger_process.debug('Not checking alive for pid = 0')
             return
@@ -268,13 +290,11 @@ class Process():
         match stdout.strip().split():
             case ['PID', _, 'STAT', 'TIME', 'COMMAND', pid, tt, stat, time, *commands]:
                 self._is_dead = False
-                self._last_alive_checked = now_tz()
 
             case ['PID', _, 'STAT', 'TIME', 'COMMAND']:
                 self._is_dead = True
-                self._last_alive_checked = now_tz()
 
-            case [*_]:
+            case _:
                 logger_process.critical('Unexpected stdout match: %s', stdout)
 
 
@@ -287,11 +307,11 @@ class PlotProcess(Process):
         self.progress = PlotProgress()
 
     def __repr__(self):
-        return super().__repr__().replace('>', f' disk={self._disk} config={self._config} {self.progress} >')
+        return super().__repr__().replace('>', f' disk={self._disk} config={self._config}>')
 
-    def fetch_updates(self):
-        super().fetch_updates()
-        self.progress = PlotProgress(self.output_cached.split('\n'))
+    def fetch(self):
+        super().fetch()
+        self.progress = PlotProgress((self.output_cached or '').split('\n'))
 
     def start(self):
         device = self._device
@@ -317,8 +337,8 @@ class MoveFileToChiaOverSSHProcess(Process):
         super().__init__(device=device, log_file_name=log_file_name)
         self._file_path = file_path
 
-    def fetch_updates(self):
-        super().fetch_updates()
+    def fetch(self):
+        super().fetch()
         if len(self.output_cached) > 0:
             logger_process.critical('Move had an abnormal output: %s', self.output_cached)
 

@@ -12,7 +12,7 @@ ERROR_DIVIDER = '*' * 80
 
 def shorten_plot_id(s):
     assert len(s) == 64
-    return s[:7] + '..' + s[-6:]
+    return s[:6]
 
 def progress_bar(ratio, width=80):
     fill_count = round(width * ratio)
