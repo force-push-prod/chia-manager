@@ -223,7 +223,7 @@ class Process():
         t1 = format_time_relative_safe(self._started_on)
         t2 = format_time_relative_safe(self._last_fetched)
         t3 = format_time_relative_safe(self._last_output_changed)
-        return f'<{self.__class__.__name__} on {self._device.human_friendly_name} {s} pid={self._pid} started={t1} checked={t2} changed={t3}>'
+        return f'<{self.__class__.__name__} {s} {self._log_file_name} pid={self._pid} started={t1} checked={t2} changed={t3}>'
 
     @property
     def output_cached(self):
