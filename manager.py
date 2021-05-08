@@ -76,6 +76,7 @@ class Manager():
 
                         # TODO: get config
                         if device == mbp2: config = mbp2_config
+                        elif device == mbp: config = mbp_config
                         else: config = j_config
 
                         p = PlotProcess(device, disk, config)
@@ -85,16 +86,18 @@ class Manager():
                 elif len(plotting_processes) == 1:
                     progress = plotting_processes[0].progress
 
-                    if progress.current_stage == 3 and progress.current_table >= 4:
+                    if progress.current_stage >= 3 and progress.current_table >= 4:
+                        if device == mbp:
+                            logger_manager.debug('Not staggering on mbp')
+                            continue
+
                         if self.stop_stagger or self.stop_new_plot:
                             logger_manager.warning('Not staggering due to flag control on %s %s', device, disk)
                         else:
                             logger_manager.info('Start staggering plot on %s %s', device, disk)
                             # TODO: get config
-                            if device == mbp2:
-                                config = mbp2_config
-                            else:
-                                config = j_config
+                            if device == mbp2: config = mbp2_config
+                            else: config = j_config
                             p = PlotProcess(device, disk, config)
                             p.start()
                             self.running_processes.append(p)
@@ -105,25 +108,21 @@ class Manager():
 
         for device, _ in self.structure.items():
             logger_manager.debug('')
-            logger_manager.debug('Device %s dead processes', device)
+            logger_manager.debug('Device %s', device)
             logger_manager.debug('')
 
             for x in self.dead_processes:
                 if x._device == device:
-                    logger_manager.debug('  %s', x)
+                    logger_manager.debug('  -   %s', x)
                     if isinstance(x, PlotProcess):
-                        logger_manager.debug('    %s', x.progress)
+                        logger_manager.debug('  -     %s', x.progress)
 
-
-            logger_manager.debug('')
-            logger_manager.debug('Device %s running processes', device)
-            logger_manager.debug('')
 
             for x in self.running_processes:
                 if x._device == device:
-                    logger_manager.debug('  %s', x)
+                    logger_manager.debug('  +   %s', x)
                     if isinstance(x, PlotProcess):
-                        logger_manager.debug('    %s', x.progress)
+                        logger_manager.debug('  +     %s', x.progress)
 
         logger_manager.debug('-' * 30)
 
@@ -163,7 +162,7 @@ def discover_chia_process(device: PlotDevice, existing_processes: list[Process]=
         pids = list(map(int, stdout.strip().split('\n')))
     except Exception as e:
         logger_manager.exception(e)
-        return
+        return []
 
     processes = []
     DummyDisk = PlotDisk('dummy')
@@ -209,11 +208,11 @@ j = PlotDevice(
 mbp = PlotDevice(
     human_friendly_name='mbp',
     ssh_name='mbp',
-    log_dir_path='/Users/yinyifei/',
+    log_dir_path='/Users/yinyifei/log/',
     disk_dir_path='/Volumes/',
     chia_path='/Applications/Chia.app/Contents/Resources/app.asar.unpacked/daemon/chia',
     python_path='/usr/bin/python',
-    bootstrap_path='/Users/yyin/Developer/chia-manager/bootstrap.py',
+    bootstrap_path='/Users/yinyifei/bootstrap.py',
 )
 
 disk1 = PlotDisk(disk_volume_name='T7-1')
@@ -223,11 +222,13 @@ disk4 = PlotDisk(disk_volume_name='ExFAT450')
 
 
 mbp2_config = PlotConfig(buffer=8000, threads=3)
+mbp_config = PlotConfig(buffer=3360, threads=2)
 j_config = PlotConfig(buffer=8000, threads=6)
 
 structure = {
     mbp2: [disk1, disk2],
-    j: [disk3]
+    j: [disk3],
+    mbp: [disk4],
 }
 
 m = Manager(structure)
