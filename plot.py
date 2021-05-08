@@ -311,7 +311,13 @@ class PlotProcess(Process):
 
     def fetch(self):
         super().fetch()
-        self.progress = PlotProgress((self.output_cached or '').split('\n'))
+        try:
+            self.progress = PlotProgress((self.output_cached or '').split('\n'))
+        except Exception as e:
+            logger_process.error('Unable to parse the output to PlotProgress; Maybe an error was contained in the output')
+            logger_process.error('The exception was: %s', e)
+            logger_process.error('The entire output was: %s', self.output_cached)
+            self.progress = PlotProgress()
 
     def start(self):
         device = self._device
