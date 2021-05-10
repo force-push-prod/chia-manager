@@ -257,7 +257,7 @@ def load():
 def auto_save():
     global m
     with open('manager-auto.pickle', 'wb') as p:
-        m = pickle.dump(m, p)
+        pickle.dump(m, p)
     logging.debug('Saved to auto-save file')
 
 
