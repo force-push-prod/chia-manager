@@ -118,7 +118,7 @@ class Manager():
             logger_manager.debug('Device %s', device)
             logger_manager.debug('')
 
-            for x in self.dead_processes:
+            for x in self.dead_processes[-8:]:  # Only show last 8 dead processes
                 if x._device == device:
                     logger_manager.debug('  -   %s', x)
                     if isinstance(x, PlotProcess):
@@ -223,20 +223,35 @@ mbp = PlotDevice(
     bootstrap_path='/Users/yinyifei/bootstrap.py',
 )
 
+sp = PlotDevice(
+    human_friendly_name='sp',
+    ssh_name='sp',
+    log_dir_path='/Users/stellarpan/log/',
+    disk_dir_path='/Volumes/',
+    chia_path='/Users/stellarpan/chia-blockchain/venv/bin/chia',
+    python_path='/usr/bin/python3',
+    bootstrap_path='/Users/stellarpan/bootstrap.py',
+)
+
 disk1 = PlotDisk(disk_volume_name='T7-1')
 disk2 = PlotDisk(disk_volume_name='T7-2')
 disk3 = PlotDisk(disk_volume_name='T7-3')
 disk4 = PlotDisk(disk_volume_name='ExFAT450')
+disk5 = PlotDisk(disk_volume_name='SP')
 
 
 mbp2_config = PlotConfig(buffer=8000, threads=3)
 mbp_config = PlotConfig(buffer=3360, threads=2)
 j_config = PlotConfig(buffer=8000, threads=6)
 
+sp_config = PlotConfig(buffer=8000, threads=3)
+
+
 structure = {
     mbp2: [disk1, disk2],
     j: [disk3],
-    mbp: [disk4],
+    sp: [disk5],
+    # mbp: [disk4],
 }
 
 m = Manager(structure)

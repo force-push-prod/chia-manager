@@ -351,7 +351,7 @@ class MoveFileToChiaOverSSHProcess(Process):
     def start(self):
         file_path = self._file_path
 
-        command = f"""scp {file_path} r1:/share/Chia01/ && rm {file_path}"""
+        command = f"""scp {file_path} r1:/share/Chia02/ && rm {file_path}"""
 
         super().start(command)
 
