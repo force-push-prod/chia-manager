@@ -278,8 +278,11 @@ def auto_save():
 
 def auto_load():
     global m
-    with open('manager-auto.pickle', 'rb') as p:
-        m = pickle.load(p)
-    logging.debug('Loaded from auto-save file')
+    try:
+        with open('manager-auto.pickle', 'rb') as p:
+            m = pickle.load(p)
+        logging.debug('Loaded from auto-save file')
+    except:
+        pass
 
 auto_load()

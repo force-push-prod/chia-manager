@@ -1,14 +1,17 @@
-from main import MAX_TABLE
 import subprocess
 
 from helper import *
 import base64
 import logging
+from dataclasses import dataclass
+
 
 def encode(s):
     return base64.b32encode(s.encode()).decode()
 
 logger_device = logging.getLogger('device')
+
+MAX_TABLE = 7
 
 @dataclass(frozen=True)
 class PlotDevice():
